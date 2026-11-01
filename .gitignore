@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.pt
+data/clips/*
+!data/clips/.gitkeep
+outputs/*
+!outputs/.gitkeep
+# keep the small synthetic demo outputs out of git too
+*.mp4
+*.tmp.mp4
+*.wav
+*.mp3
+.DS_Store
+.env

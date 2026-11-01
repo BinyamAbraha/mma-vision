@@ -1,0 +1,46 @@
+# MMA Vision config. Every value here overrides the defaults in mma_vision/config.py.
+# Thresholds marked (torso) are in torso-heights, so they transfer across camera zoom/resolution.
+
+red_name: RED
+blue_name: BLUE
+round_length_sec: 300
+
+model:
+  weights: yolo26n-pose.pt        # n = fastest (CPU/MPS). Try yolo26s-pose.pt or m on a GPU.
+  fallback_weights: yolo11n-pose.pt
+  imgsz: 640                      # 960 helps small/far fighters on GPU
+  conf: 0.35
+  tracker: bytetrack.yaml
+  device: auto                    # auto | cpu | mps | cuda
+  half: false                     # fp16, CUDA only
+
+fighters:
+  min_box_height_frac: 0.15       # drop people shorter than 15% of frame height (crowd, far corners)
+  warmup_frames: 15
+  max_jump_frac: 0.35
+
+strikes:
+  smooth_alpha: 0.6               # keypoint EMA; lower = smoother but laggier
+  vel_thresh: 0.09                # (torso/frame) limb speed to count as a strike. Raise if too many FPs.
+  toward_cos: 0.3                 # limb must move toward the opponent
+  land_dist: 0.45                 # (torso) tip-to-target distance to call it landed
+  head_react_vel: 0.04            # opponent head snap that confirms a landed shot
+  react_window: 6
+  cooldown: 10                    # frames before same limb can strike again (10 @30fps = 3 strikes/sec max)
+  min_conf: 0.3
+
+overlay:
+  draw_skeleton: true
+  draw_boxes: true
+  stat_panel: true
+  minimap: true
+  flash_frames: 12
+
+commentary:
+  enabled: false                  # or pass --commentary
+  provider: template              # template (free, offline) | claude (needs ANTHROPIC_API_KEY)
+  model: claude-sonnet-4-5
+  tts: none                       # none | elevenlabs (ELEVENLABS_API_KEY) | kokoro (local, free)
+  voice: Rachel                   # ElevenLabs voice id/name, or a Kokoro voice like am_michael
+  every_sec: 8
+  style: energetic UFC broadcast color commentator, short punchy sentences
