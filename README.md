@@ -26,7 +26,11 @@ python scripts/make_synthetic.py
 python -m mma_vision.pipeline rerender data/clips/synthetic.mp4
 open outputs/synthetic/annotated.mp4 outputs/synthetic/summary.png
 
-# Real footage
+# Real footage — one command (Adesanya vs Pereira 2, 90s slice)
+scripts/run_demo.sh --max-frames 300   # 10-second test
+scripts/run_demo.sh                    # the whole slice
+
+# Any other clip
 scripts/download_clip.sh "https://youtube.com/watch?v=..." fight 00:10:00 00:12:00
 python -m mma_vision.pipeline run data/clips/fight.mp4 --red "FIGHTER A" --blue "FIGHTER B"
 ```
