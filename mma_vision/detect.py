@@ -95,15 +95,6 @@ def extract_tracks(video: str | Path, cfg: Config, cache: str | Path | None = No
                    max_frames: int | None = None, progress: bool = True) -> pd.DataFrame:
     """Run pose+track on a video. Caches to `cache` (parquet or csv) if given."""
     video = Path(video)
-    if cache and (Path(cache).exists() or Path(cache).with_suffix(".csv").exists()):
-        cached = read_tracks(cache)
-        cached_max = cached.attrs.get("max_frames")
-        # A cache made with --max-frames is partial; re-run if more frames are wanted now.
-        if cached_max is None or (max_frames is not None and max_frames <= cached_max):
-            log.info("Loading cached tracks from %s", cache)
-            return cached
-        log.info("Cache holds only the first %d frames; re-running inference for the full clip", cached_max)
-
     cap = cv2.VideoCapture(str(video))
     if not cap.isOpened():
         raise FileNotFoundError(video)
@@ -111,6 +102,18 @@ def extract_tracks(video: str | Path, cfg: Config, cache: str | Path | None = No
     w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     n_total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     cap.release()
+
+    if cache and (Path(cache).exists() or Path(cache).with_suffix(".csv").exists()):
+        cached = read_tracks(cache)
+        have = int(cached["frame"].max()) + 1 if len(cached) else 0
+        want = min(max_frames, n_total) if max_frames else n_total
+        same_weights = cached.attrs.get("weights", cfg.model.weights) == cfg.model.weights
+        # Reuse only if the cache covers the frames we want AND came from the same model.
+        if have >= want * 0.95 and same_weights:
+            log.info("Loading cached tracks from %s (%d frames)", cache, have)
+            return cached
+        why = f"covers {have}/{want} frames" if same_weights else f"was made with {cached.attrs.get('weights')}"
+        log.info("Cache %s — re-running inference", why)
 
     device = pick_device(cfg.model.device)
     log.info("Device: %s | video %dx%d @ %.2f fps, %d frames", device, w, h, fps, n_total)
@@ -159,7 +162,8 @@ def extract_tracks(video: str | Path, cfg: Config, cache: str | Path | None = No
         bar.close()
 
     df = pd.DataFrame(rows)
-    df.attrs.update({"fps": fps, "width": w, "height": h, "video": str(video), "max_frames": max_frames})
+    df.attrs.update({"fps": fps, "width": w, "height": h, "video": str(video),
+                     "max_frames": max_frames, "weights": cfg.model.weights})
     if cache:
         write_tracks(df, cache)
     return df

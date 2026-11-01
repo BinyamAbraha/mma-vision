@@ -21,7 +21,9 @@ fighters:
 
 strikes:
   smooth_alpha: 0.5               # keypoint EMA; lower = smoother but laggier
-  vel_thresh: 0.12                # (torso/frame) limb speed to count as a strike. Raise if too many FPs.
+  vel_thresh: 0.12                # punch: (torso/frame) wrist speed to count as a strike. Raise if too many FPs.
+  vel_thresh_kick: 0.18           # kick: ankle speed threshold — kicks are much faster than steps
+  min_kick_lift: 0.3              # kick: kicking ankle must rise this far (torso) above the standing ankle
   toward_cos: 0.4                 # limb must move toward the opponent
   min_ext_punch: 0.75             # (torso) wrist-to-shoulder distance at impact — kills guard twitches
   min_ext_kick: 0.6               # (torso) ankle-to-hip distance at impact (kept low — kicks foreshorten in 2D)

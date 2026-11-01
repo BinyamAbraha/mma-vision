@@ -79,6 +79,17 @@ def main(out_video=Path("data/clips/synthetic.mp4"), out_tracks=Path("outputs/sy
         red_c = np.array([W / 2 - gap / 2 + sway, H * 0.5])
         blue_c = np.array([W / 2 + gap / 2 + sway, H * 0.5])
         ks = {"red": stance(*red_c, +1), "blue": stance(*blue_c, -1)}
+        # Walk-in (t=18.5-19.6): red steps forward fast, feet on the floor. Must NOT register as kicks.
+        if 18.5 <= t <= 19.6:
+            u = (t - 18.5) / 1.1
+            step = 1.0 * TORSO
+            for leg, phase in (("r", 0.0), ("l", 0.5)):   # each foot lunges forward in ~4 frames
+                s_ = np.clip((u - phase) * 8, 0, 1)
+                ks["red"][KP[f"{leg}_ankle"]][0] += step * s_
+                ks["red"][KP[f"{leg}_knee"]][0] += step * s_ * 0.7
+            ks["red"][[KP["l_hip"], KP["r_hip"], KP["l_shoulder"], KP["r_shoulder"], KP["nose"],
+                       KP["l_eye"], KP["r_eye"], KP["l_ear"], KP["r_ear"], KP["l_elbow"], KP["r_elbow"],
+                       KP["l_wrist"], KP["r_wrist"]]] += (step * 0.6 * u, 0)
         # apply scripted strikes
         for (t0, f, limb, target, lands) in SCRIPT:
             b = bump(t, t0, 0.35)
