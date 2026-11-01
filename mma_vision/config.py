@@ -34,7 +34,9 @@ class FighterCfg:
 @dataclass
 class StrikeCfg:
     smooth_alpha: float = 0.5         # EMA smoothing on keypoints (1 = no smoothing)
-    vel_thresh: float = 0.12          # limb speed, in torso-heights per frame, to count as a strike
+    vel_thresh: float = 0.12          # punch: wrist speed, in torso-heights per frame, to count as a strike
+    vel_thresh_kick: float = 0.18     # kick: ankle speed threshold (kicks are faster than steps)
+    min_kick_lift: float = 0.3        # kick: kicking ankle must be this far (torso) ABOVE the standing ankle
     toward_cos: float = 0.4           # min cosine between limb velocity and direction to opponent
     min_ext_punch: float = 0.75       # wrist must be at least this far (torso) from own shoulder at impact
     min_ext_kick: float = 0.6         # ankle at least this far (torso) from own hip at impact (low: 2D foreshortening)

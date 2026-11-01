@@ -65,8 +65,19 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
             cos = np.sum(vel_n * to_opp_n, axis=1)
             ext = np.linalg.norm(pos - A.pt(anchor), axis=1) / scale
 
-            mask = (speed > cfg.vel_thresh) & (cos > cfg.toward_cos) & ~np.isnan(speed) & ~np.isnan(cos)
+            vthr = cfg.vel_thresh if kind == "punch" else cfg.vel_thresh_kick
+            mask = (speed > vthr) & (cos > cfg.toward_cos) & ~np.isnan(speed) & ~np.isnan(cos)
+            lift = None
+            if kind == "kick":
+                # Walking moves an ankle toward the opponent too. A kick lifts the foot off the floor:
+                # the kicking ankle must rise well above the other (standing) ankle. Image y grows downward.
+                other = "r_ankle" if limb == "l_ankle" else "l_ankle"
+                lift = (A.pt(other)[:, 1] - pos[:, 1]) / scale
             for p in _local_peaks(speed, mask, cfg.cooldown):
+                if lift is not None:
+                    lw = lift[p:min(len(lift), p + 7)]
+                    if np.all(np.isnan(lw)) or np.nanmax(lw) < cfg.min_kick_lift:
+                        continue
                 # Impact ~ max extension shortly after the speed peak
                 w_end = min(len(ext), p + 6)
                 win = ext[p:w_end]
