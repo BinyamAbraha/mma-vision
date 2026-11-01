@@ -17,6 +17,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from . import KP
 from .config import StrikeCfg
 from .tracks import FighterSeries
 
@@ -31,6 +32,55 @@ LIMBS = {
 def _speed(pos: np.ndarray, scale: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     vel = np.vstack([np.zeros((1, 2)), np.diff(pos, axis=0)]) / scale[:, None]
     return vel, np.linalg.norm(vel, axis=1)
+
+
+def _seg_dist(p: np.ndarray, a: np.ndarray, b: np.ndarray) -> float:
+    """Distance from point p to segment a-b (any NaN -> nan)."""
+    if np.any(np.isnan(p)) or np.any(np.isnan(a)) or np.any(np.isnan(b)):
+        return np.nan
+    ab = b - a
+    L2 = float(ab @ ab)
+    t = 0.0 if L2 < 1e-9 else float(np.clip((p - a) @ ab / L2, 0.0, 1.0))
+    return float(np.linalg.norm(p - (a + t * ab)))
+
+
+def _target_dists(tip: np.ndarray, B: FighterSeries, fi: int, kind: str, scale: float) -> dict[str, float]:
+    """Distance (torso units) from the striking tip to each target *region*, not a single point.
+
+    head: face centre (minus a head radius)   body: shoulder-mid -> hip-mid segment (minus half torso width)
+    leg: hip -> knee -> ankle segments of either leg (minus a thigh radius)
+    """
+    k = B.kp[fi]
+    out: dict[str, float] = {}
+    head = B.head[fi]
+    if not np.any(np.isnan(head)):
+        out["head"] = max(0.0, np.linalg.norm(tip - head) / scale - 0.18)
+    sh = np.nanmean(k[[KP["l_shoulder"], KP["r_shoulder"]]], axis=0)
+    hp = np.nanmean(k[[KP["l_hip"], KP["r_hip"]]], axis=0)
+    d = _seg_dist(tip, sh, hp)
+    if not np.isnan(d):
+        out["body"] = max(0.0, d / scale - 0.25)
+    if kind == "kick":
+        ds = [_seg_dist(tip, k[KP[f"{s}_hip"]], k[KP[f"{s}_knee"]]) for s in ("l", "r")]
+        ds += [_seg_dist(tip, k[KP[f"{s}_knee"]], k[KP[f"{s}_ankle"]]) for s in ("l", "r")]
+        ds = [x for x in ds if not np.isnan(x)]
+        if ds:
+            out["leg"] = max(0.0, min(ds) / scale - 0.12)
+    return out
+
+
+def _zone(tip: np.ndarray, B: FighterSeries, fi: int, kind: str, scale: float) -> str:
+    """head / body / leg by the tip's height relative to the opponent's shoulders and hips."""
+    k = B.kp[fi]
+    sh_y = np.nanmean(k[[KP["l_shoulder"], KP["r_shoulder"]], 1])
+    hp_y = np.nanmean(k[[KP["l_hip"], KP["r_hip"]], 1])
+    if np.isnan(sh_y) or np.isnan(hp_y):
+        return "body"
+    if tip[1] < sh_y + 0.12 * scale:          # at or above the shoulder line (chin included)
+        return "head"
+    if kind == "kick" and tip[1] > hp_y + 0.15 * scale:
+        return "leg"
+    return "body"
 
 
 def _local_peaks(x: np.ndarray, mask: np.ndarray, cooldown: int) -> list[int]:
@@ -53,7 +103,6 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
         A, B = series[me], series[opp]
         scale = A.scale
         opp_center = B.torso_center
-        opp_targets = {"head": B.head, "body": B.torso_center, "leg": B.knee_center}
         _, opp_head_speed = _speed(B.head, B.scale)
 
         for limb, (anchor, kind) in LIMBS.items():
@@ -104,16 +153,15 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
                         travel = np.nanmax(np.linalg.norm(prior - tip, axis=1)) / scale[imp]
                         if travel < cfg.min_kick_travel:
                             continue
-                dists = {}
-                for tname, tpos in opp_targets.items():
-                    if kind == "punch" and tname == "leg":
-                        continue
-                    d = np.linalg.norm(tip - tpos[imp]) / scale[imp]
-                    if not np.isnan(d):
-                        dists[tname] = d
+                dists = _target_dists(tip, B, imp, kind, scale[imp])
                 if not dists:
                     continue
-                target = min(dists, key=dists.get)
+                # Target = the vertical zone the tip ends up in (head / body / leg), then the distance
+                # to *that* zone decides landed vs. miss. Picking the nearest zone instead would call a
+                # jab to the chin a "body shot" because the chin sits right above the shoulders.
+                target = _zone(tip, B, imp, kind, scale[imp])
+                if target not in dists:
+                    target = min(dists, key=dists.get)
                 dmin = dists[target]
 
                 r_end = min(len(opp_head_speed), imp + cfg.react_window + 1)

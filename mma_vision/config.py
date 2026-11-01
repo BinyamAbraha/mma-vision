@@ -43,8 +43,8 @@ class StrikeCfg:
     min_ext_gain: float = 0.25        # punch: wrist must have EXTENDED by this much (torso) vs. preceding frames
     min_kick_travel: float = 0.5      # kick: ankle must have moved this far (torso) within the lookback window
     ext_lookback: int = 8             # frames before the speed peak used for the extension/travel baseline
-    land_dist: float = 0.45           # limb tip within this many torso-heights of a target => landed
-    head_react_vel: float = 0.04      # opponent head speed jump after impact that confirms a landed shot
+    land_dist: float = 0.35           # gap (torso) between limb tip and target SURFACE to call it landed
+    head_react_vel: float = 0.03      # opponent head speed jump after impact that confirms a landed shot
     react_window: int = 6             # frames to look for head reaction after peak
     cooldown: int = 10                # frames before the same limb can strike again
     min_conf: float = 0.3             # keypoint confidence below this is treated as missing

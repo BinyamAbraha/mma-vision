@@ -30,8 +30,8 @@ strikes:
   min_ext_gain: 0.25              # punch: wrist must have extended by this much (torso) vs. frames before
   min_kick_travel: 0.5            # kick: ankle must have travelled this far (torso) in the lookback window
   ext_lookback: 8
-  land_dist: 0.45                 # (torso) tip-to-target distance to call it landed
-  head_react_vel: 0.04            # opponent head snap that confirms a landed shot
+  land_dist: 0.35                 # (torso) gap between limb tip and target surface to call it landed. Raise if real hits read as misses.
+  head_react_vel: 0.03            # opponent head snap that confirms a landed shot
   react_window: 6
   cooldown: 10                    # frames before same limb can strike again (10 @30fps = 3 strikes/sec max)
   min_conf: 0.3
