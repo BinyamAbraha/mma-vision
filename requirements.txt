@@ -1,0 +1,19 @@
+# Core (CPU / Apple Silicon MPS / CUDA all work with these)
+ultralytics>=8.3          # YOLO26-pose + ByteTrack
+torch>=2.2
+torchvision
+opencv-python>=4.9
+numpy>=1.26
+pandas>=2.1
+pyarrow                   # parquet cache for tracks
+pyyaml
+tqdm
+matplotlib
+
+# Optional — commentary / voice
+# anthropic                # provider: claude
+# elevenlabs               # tts: elevenlabs
+# kokoro soundfile         # tts: kokoro (local, free)
+
+# Optional — footage
+# yt-dlp
