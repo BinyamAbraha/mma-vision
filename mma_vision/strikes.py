@@ -76,6 +76,23 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
                 tip = pos[imp]
                 if np.any(np.isnan(tip)):
                     continue
+                # Gate 1: the limb must actually be extended at impact (kills guard twitches / feints)
+                min_ext = cfg.min_ext_punch if kind == "punch" else cfg.min_ext_kick
+                if np.isnan(ext[imp]) or ext[imp] < min_ext:
+                    continue
+                # Gate 2: punches must go retracted -> extended; kicks must travel (a kicking leg stays
+                # about the same length, so hip-ankle distance is a poor signal — use tip displacement).
+                lo = max(0, p - cfg.ext_lookback)
+                if kind == "punch":
+                    base = ext[lo:p]
+                    if base.size and not np.all(np.isnan(base)) and (ext[imp] - np.nanmin(base)) < cfg.min_ext_gain:
+                        continue
+                else:
+                    prior = pos[lo:p]
+                    if prior.size and not np.all(np.isnan(prior)):
+                        travel = np.nanmax(np.linalg.norm(prior - tip, axis=1)) / scale[imp]
+                        if travel < cfg.min_kick_travel:
+                            continue
                 dists = {}
                 for tname, tpos in opp_targets.items():
                     if kind == "punch" and tname == "leg":
@@ -98,6 +115,8 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
                     0.5 * np.clip(1 - dmin / (2 * cfg.land_dist), 0, 1)
                     + 0.3 * np.clip(react / (2 * cfg.head_react_vel), 0, 1)
                     + 0.2 * np.clip((speed[p] - cfg.vel_thresh) / cfg.vel_thresh, 0, 1), 0, 1))
+                if not landed and conf < cfg.min_miss_conf:
+                    continue
                 events.append({
                     "frame": int(imp), "t": imp / fps, "fighter": me, "limb": limb, "kind": kind,
                     "target": target, "landed": landed, "speed": float(speed[p]),

@@ -33,14 +33,20 @@ class FighterCfg:
 
 @dataclass
 class StrikeCfg:
-    smooth_alpha: float = 0.6         # EMA smoothing on keypoints (1 = no smoothing)
-    vel_thresh: float = 0.09          # limb speed, in torso-heights per frame, to count as a strike
-    toward_cos: float = 0.3           # min cosine between limb velocity and direction to opponent
+    smooth_alpha: float = 0.5         # EMA smoothing on keypoints (1 = no smoothing)
+    vel_thresh: float = 0.12          # limb speed, in torso-heights per frame, to count as a strike
+    toward_cos: float = 0.4           # min cosine between limb velocity and direction to opponent
+    min_ext_punch: float = 0.75       # wrist must be at least this far (torso) from own shoulder at impact
+    min_ext_kick: float = 0.6         # ankle at least this far (torso) from own hip at impact (low: 2D foreshortening)
+    min_ext_gain: float = 0.25        # punch: wrist must have EXTENDED by this much (torso) vs. preceding frames
+    min_kick_travel: float = 0.5      # kick: ankle must have moved this far (torso) within the lookback window
+    ext_lookback: int = 8             # frames before the speed peak used for the extension/travel baseline
     land_dist: float = 0.45           # limb tip within this many torso-heights of a target => landed
     head_react_vel: float = 0.04      # opponent head speed jump after impact that confirms a landed shot
     react_window: int = 6             # frames to look for head reaction after peak
     cooldown: int = 10                # frames before the same limb can strike again
     min_conf: float = 0.3             # keypoint confidence below this is treated as missing
+    min_miss_conf: float = 0.0        # optional extra FP guard: drop *missed* strikes with conf below this
 
 
 @dataclass
