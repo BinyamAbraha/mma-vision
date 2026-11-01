@@ -95,9 +95,14 @@ def extract_tracks(video: str | Path, cfg: Config, cache: str | Path | None = No
                    max_frames: int | None = None, progress: bool = True) -> pd.DataFrame:
     """Run pose+track on a video. Caches to `cache` (parquet or csv) if given."""
     video = Path(video)
-    if cache and Path(cache).exists():
-        log.info("Loading cached tracks from %s", cache)
-        return read_tracks(cache)
+    if cache and (Path(cache).exists() or Path(cache).with_suffix(".csv").exists()):
+        cached = read_tracks(cache)
+        cached_max = cached.attrs.get("max_frames")
+        # A cache made with --max-frames is partial; re-run if more frames are wanted now.
+        if cached_max is None or (max_frames is not None and max_frames <= cached_max):
+            log.info("Loading cached tracks from %s", cache)
+            return cached
+        log.info("Cache holds only the first %d frames; re-running inference for the full clip", cached_max)
 
     cap = cv2.VideoCapture(str(video))
     if not cap.isOpened():
@@ -154,7 +159,7 @@ def extract_tracks(video: str | Path, cfg: Config, cache: str | Path | None = No
         bar.close()
 
     df = pd.DataFrame(rows)
-    df.attrs.update({"fps": fps, "width": w, "height": h, "video": str(video)})
+    df.attrs.update({"fps": fps, "width": w, "height": h, "video": str(video), "max_frames": max_frames})
     if cache:
         write_tracks(df, cache)
     return df
