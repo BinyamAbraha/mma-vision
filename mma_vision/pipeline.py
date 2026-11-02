@@ -60,6 +60,9 @@ def analyze(tracks, cfg: Config, fps: float, w: int, h: int, out: Path):
 
     out.mkdir(parents=True, exist_ok=True)
     events.to_csv(out / "events.csv", index=False)
+    cands = getattr(detect_strikes, "last_candidates", None)
+    if cands is not None and len(cands):
+        cands.round(3).to_csv(out / "candidates.csv", index=False)
     fs.to_csv(out / "frames.csv", index=False)
     with open(out / "summary.json", "w") as f:
         json.dump(summary, f, indent=2, default=float)

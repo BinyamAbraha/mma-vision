@@ -100,7 +100,9 @@ def main(out_video=Path("data/clips/synthetic.mp4"), out_tracks=Path("outputs/sy
                        KP["l_wrist"], KP["r_wrist"]]] += (step * 0.6 * u, 0)
         # apply scripted strikes
         for (t0, f, limb, target, lands) in SCRIPT:
-            b = bump(t, t0, 0.35 if t0 < 19 else 0.28)
+            reach_ = 1.0 if lands else (0.75 if "ankle" in limb else 0.55)
+            # a missed strike is thrown at full speed over a shorter path -> shorter duration
+            b = bump(t, t0, (0.35 if t0 < 19 else 0.28) * (1.0 if lands else reach_ + 0.15))
             if b <= 0:
                 continue
             opp = "blue" if f == "red" else "red"

@@ -40,8 +40,11 @@ class FighterCfg:
 @dataclass
 class StrikeCfg:
     smooth_alpha: float = 0.65        # EMA smoothing on keypoints (1 = none). Too low merges fast combos.
-    vel_thresh: float = 0.12          # punch: wrist speed, in torso-heights per frame, to count as a strike
-    vel_thresh_kick: float = 0.18     # kick: ankle speed threshold (kicks are faster than steps)
+    vel_thresh: float = 0.16          # punch: wrist speed, in torso-heights per frame, to count as a strike
+    vel_thresh_kick: float = 0.2      # kick: ankle speed threshold (kicks are faster than steps)
+    clinch_range: float = 0.9         # (torso, hip-to-hip) closer than this = clinch / pocket
+    clinch_speed_mult: float = 1.5    # speed thresholds are multiplied by this in the clinch (hands are always 'near the target' there)
+    max_head_react: float = 0.5       # opponent head 'reaction' above this (torso/frame) is a keypoint jump, ignored
     min_kick_lift: float = 0.3        # kick: kicking ankle must be this far (torso) ABOVE the standing ankle
     toward_cos: float = 0.3           # min cosine between limb velocity and direction to opponent (hooks curve)
     min_ext_punch: float = 0.65       # wrist at least this far (torso) from own shoulder at impact (hooks are bent)
@@ -52,7 +55,9 @@ class StrikeCfg:
     land_dist: float = 0.35           # gap (torso) between limb tip and target SURFACE to call it landed
     head_react_vel: float = 0.03      # opponent head speed jump after impact that confirms a landed shot
     react_window: int = 6             # frames to look for head reaction after peak
-    cooldown: int = 6                 # frames before the same limb can strike again (6 @30fps allows a double jab)
+    cooldown: int = 8                 # frames before the same hand can punch again (8 @30fps ≈ a fast double jab)
+    cooldown_kick: int = 15           # frames before the same leg can kick again (a kick + return takes ~0.5s)
+    min_gap_any: int = 4              # min frames between ANY two strikes by one fighter (a 1-2 is ~5 frames)
     combo_window: int = 15            # frames after a strike during which the next one counts as a combo
     combo_relax: float = 0.6          # multiply extension/retraction gates by this inside a combo
     max_miss_dist: float = 0.9        # (torso) a miss further than this from the target is hand-fighting, not a strike
