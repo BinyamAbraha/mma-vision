@@ -26,12 +26,12 @@ fighters:
   repair_switch_penalty: 0.6
 
 strikes:
-  smooth_alpha: 0.5               # keypoint EMA; lower = smoother but laggier
+  smooth_alpha: 0.65              # keypoint EMA; lower = smoother but merges fast combos
   vel_thresh: 0.12                # punch: (torso/frame) wrist speed to count as a strike. Raise if too many FPs.
   vel_thresh_kick: 0.18           # kick: ankle speed threshold — kicks are much faster than steps
   min_kick_lift: 0.3              # kick: kicking ankle must rise this far (torso) above the standing ankle
-  toward_cos: 0.4                 # limb must move toward the opponent
-  min_ext_punch: 0.75             # (torso) wrist-to-shoulder distance at impact — kills guard twitches
+  toward_cos: 0.3                 # limb must move toward the opponent (low enough for hooks)
+  min_ext_punch: 0.65             # (torso) wrist-to-shoulder distance at impact — kills guard twitches, allows hooks
   min_ext_kick: 0.6               # (torso) ankle-to-hip distance at impact (kept low — kicks foreshorten in 2D)
   min_ext_gain: 0.25              # punch: wrist must have extended by this much (torso) vs. frames before
   min_kick_travel: 0.5            # kick: ankle must have travelled this far (torso) in the lookback window
@@ -39,7 +39,11 @@ strikes:
   land_dist: 0.35                 # (torso) gap between limb tip and target surface to call it landed. Raise if real hits read as misses.
   head_react_vel: 0.03            # opponent head snap that confirms a landed shot
   react_window: 6
-  cooldown: 10                    # frames before same limb can strike again (10 @30fps = 3 strikes/sec max)
+  cooldown: 6                     # frames before same limb can strike again (6 @30fps allows a double jab)
+  combo_window: 15                # frames after a strike in which the next one is treated as part of a combo
+  combo_relax: 0.6                # extension/retraction gates are multiplied by this inside a combo
+  max_miss_dist: 0.9              # (torso) misses further than this from the target are hand-fighting, dropped
+  miss_speed_mult: 1.3            # a miss must be this x faster than the speed threshold (landed shots needn't)
   min_conf: 0.3
   min_miss_conf: 0.0              # optional: drop misses below this confidence (0 = off)
 

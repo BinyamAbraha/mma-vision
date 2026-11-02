@@ -20,7 +20,7 @@ from mma_vision import KP, KP_NAMES, SKELETON  # noqa: E402
 from mma_vision.detect import write_tracks, TRACKS_SCHEMA  # noqa: E402
 from mma_vision.identity import appearance, APP_COLS  # noqa: E402
 
-W, H, FPS, SECONDS = 1280, 720, 30, 20
+W, H, FPS, SECONDS = 1280, 720, 30, 23
 TORSO = 120.0
 
 
@@ -62,6 +62,13 @@ SCRIPT = [
     (14.0, "blue", "r_ankle", "head", False),
     (15.5, "blue", "r_wrist", "head", True),
     (17.0, "red", "r_ankle", "leg", True),
+    # 1-2-3 combo: jab, cross, lead hook — 0.2s apart, same hand reused 0.45s later. Must count as 3.
+    (20.0, "red", "l_wrist", "head", True),
+    (20.2, "red", "r_wrist", "head", True),
+    (20.45, "red", "l_wrist", "body", True),
+    # blue answers with a 1-2 where the jab misses and the cross lands
+    (21.3, "blue", "l_wrist", "head", False),
+    (21.5, "blue", "r_wrist", "head", True),
 ]
 
 
@@ -93,14 +100,14 @@ def main(out_video=Path("data/clips/synthetic.mp4"), out_tracks=Path("outputs/sy
                        KP["l_wrist"], KP["r_wrist"]]] += (step * 0.6 * u, 0)
         # apply scripted strikes
         for (t0, f, limb, target, lands) in SCRIPT:
-            b = bump(t, t0, 0.35)
+            b = bump(t, t0, 0.35 if t0 < 19 else 0.28)
             if b <= 0:
                 continue
             opp = "blue" if f == "red" else "red"
             tgt = {"head": ks[opp][KP["nose"]],
                    "body": (ks[opp][KP["l_shoulder"]] + ks[opp][KP["r_hip"]]) / 2,
                    "leg": ks[opp][KP["r_knee"]]}[target]
-            reach = 1.0 if lands else 0.62  # misses stop short
+            reach = 1.0 if lands else (0.75 if "ankle" in limb else 0.55)  # misses stop short (kicks travel further)
             tip0 = ks[f][KP[limb]]
             ks[f][KP[limb]] = tip0 + (tgt - tip0) * reach * b
             # elbow/knee follows halfway
