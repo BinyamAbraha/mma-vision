@@ -42,6 +42,9 @@ strikes:
   min_kick_travel: 0.5            # kick: ankle must have travelled this far (torso) in the lookback window
   ext_lookback: 8
   land_dist: 0.35                 # (torso) gap between limb tip and target surface to call it landed. Raise if real hits read as misses.
+  land_dist_kick_tight: 0.12      # body/leg kicks count as landed on distance alone only if this close...
+  body_react_vel: 0.05            # ...otherwise the opponent's hips must visibly get shoved
+  cut_guard: 10                   # ignore anything within this many frames of a camera cut
   head_react_vel: 0.03            # opponent head snap that confirms a landed shot
   react_window: 6
   cooldown: 8                     # frames before the same hand can punch again

@@ -65,3 +65,30 @@ def test_keypoint_teleport_is_not_a_strike():
     ev = detect_strikes(series, 30.0, cfg.strikes)
     phantom = ev[(ev.fighter == "red") & (ev.limb == "r_wrist") & ev.frame.between(95, 115)]
     assert len(phantom) == 0, f"teleport counted as strike: {phantom[['frame','speed','ext','support']].values.tolist()}"
+
+
+def test_camera_cut_is_not_a_strike():
+    """Simulate a camera cut: from one frame on, every keypoint of both fighters shifts 300px.
+    The smoothing used to smear that jump into a fake multi-frame punch."""
+    from mma_vision.config import Config
+    from mma_vision.detect import read_tracks
+    from mma_vision.tracks import build_series
+    from mma_vision.strikes import detect_strikes
+    from mma_vision import KP_NAMES
+
+    df = read_tracks(ROOT / "outputs" / "synthetic" / "tracks.csv")
+    cfg = Config()
+    cut_frame = 450  # quiet stretch (strikes at 12.7s=381 and 14.0s=420, next at 15.5s=465)
+    bad = df.copy()
+    m = bad.frame >= cut_frame
+    for n in KP_NAMES:
+        bad.loc[m, f"kp_{n}_x"] -= 300
+    for c in ("x1", "x2"):
+        bad.loc[m, c] -= 300
+    series, _ = build_series(bad, cfg.strikes.min_conf, cfg.strikes.smooth_alpha)
+    assert series["red"].cuts[cut_frame], "cut not detected"
+    ev = detect_strikes(series, 30.0, cfg.strikes)
+    phantom = ev[ev.frame.between(cut_frame - 12, cut_frame + 12)]
+    assert len(phantom) == 0, f"cut produced strikes: {phantom[['t','fighter','limb','speed']].values.tolist()}"
+    # and the real strike right after the cut (15.5s) still counts
+    assert len(ev[ev.t.between(15.3, 16.0)]) == 1
