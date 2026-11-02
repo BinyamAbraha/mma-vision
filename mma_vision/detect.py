@@ -15,10 +15,12 @@ import cv2
 import numpy as np
 import pandas as pd
 
-from . import KP_NAMES, FIGHTERS
+from . import KP_NAMES
 from .config import Config, pick_device
+from .identity import FighterAssigner, appearance, APP_COLS, APP_DIM
 
 log = logging.getLogger(__name__)
+TRACKS_SCHEMA = 2  # bump when columns change so stale caches are rebuilt
 
 
 def _load_model(cfg: Config):
@@ -29,66 +31,6 @@ def _load_model(cfg: Config):
     except Exception as e:  # weights not downloadable / unknown name
         log.warning("Could not load %s (%s). Falling back to %s", cfg.model.weights, e, cfg.model.fallback_weights)
         return YOLO(cfg.model.fallback_weights)
-
-
-class FighterAssigner:
-    """Keeps red/blue identity stable across ByteTrack ID switches.
-
-    Per frame: keep people taller than min_box_height_frac, take the two largest
-    boxes, then match them to the previous red/blue centroids (swap if that
-    reduces total distance). During warmup, red = leftmost fighter.
-    """
-
-    def __init__(self, cfg: Config, frame_w: int, frame_h: int):
-        self.cfg = cfg.fighters
-        self.w, self.h = frame_w, frame_h
-        self.prev: dict[str, np.ndarray | None] = {f: None for f in FIGHTERS}
-        self.locked = False
-        self.n_seen = 0
-
-    def assign(self, boxes: np.ndarray) -> dict[str, int]:
-        """boxes: (N,4) xyxy. Returns {fighter: row_index} for up to 2 fighters."""
-        if len(boxes) == 0:
-            return {}
-        heights = boxes[:, 3] - boxes[:, 1]
-        keep = np.where(heights >= self.cfg.min_box_height_frac * self.h)[0]
-        if len(keep) == 0:
-            keep = np.argsort(-heights)[:2]
-        areas = (boxes[keep, 2] - boxes[keep, 0]) * (boxes[keep, 3] - boxes[keep, 1])
-        top = keep[np.argsort(-areas)[:2]]
-        cents = np.stack([(boxes[top, 0] + boxes[top, 2]) / 2, (boxes[top, 1] + boxes[top, 3]) / 2], axis=1)
-
-        if not self.locked or any(v is None for v in self.prev.values()):
-            # Warmup / cold start: red is leftmost.
-            order = np.argsort(cents[:, 0])
-            out = {}
-            for f, i in zip(FIGHTERS, order):
-                out[f] = int(top[i])
-                self.prev[f] = cents[i]
-            self.n_seen += 1
-            if self.n_seen >= self.cfg.warmup_frames and len(top) == 2:
-                self.locked = True
-            return out
-
-        # Match to previous centroids, try both pairings.
-        if len(top) == 1:
-            d = {f: np.linalg.norm(cents[0] - self.prev[f]) for f in FIGHTERS}
-            f = min(d, key=d.get)
-            self.prev[f] = cents[0]
-            return {f: int(top[0])}
-
-        d_straight = np.linalg.norm(cents[0] - self.prev["red"]) + np.linalg.norm(cents[1] - self.prev["blue"])
-        d_swap = np.linalg.norm(cents[1] - self.prev["red"]) + np.linalg.norm(cents[0] - self.prev["blue"])
-        pair = (0, 1) if d_straight <= d_swap else (1, 0)
-        out = {}
-        for f, i in zip(FIGHTERS, pair):
-            jump = np.linalg.norm(cents[i] - self.prev[f])
-            if jump > self.cfg.max_jump_frac * self.w:
-                # Likely a camera cut; re-anchor rather than drop.
-                log.debug("Large jump for %s (%.0f px) — re-anchoring", f, jump)
-            self.prev[f] = cents[i]
-            out[f] = int(top[i])
-        return out
 
 
 def extract_tracks(video: str | Path, cfg: Config, cache: str | Path | None = None,
@@ -108,11 +50,13 @@ def extract_tracks(video: str | Path, cfg: Config, cache: str | Path | None = No
         have = int(cached["frame"].max()) + 1 if len(cached) else 0
         want = min(max_frames, n_total) if max_frames else n_total
         same_weights = cached.attrs.get("weights", cfg.model.weights) == cfg.model.weights
-        # Reuse only if the cache covers the frames we want AND came from the same model.
-        if have >= want * 0.95 and same_weights:
+        same_schema = cached.attrs.get("schema") == TRACKS_SCHEMA
+        # Reuse only if the cache covers the frames we want, came from the same model, and has the current columns.
+        if have >= want * 0.95 and same_weights and same_schema:
             log.info("Loading cached tracks from %s (%d frames)", cache, have)
             return cached
-        why = f"covers {have}/{want} frames" if same_weights else f"was made with {cached.attrs.get('weights')}"
+        why = (f"covers {have}/{want} frames" if not have >= want * 0.95 else
+               f"was made with {cached.attrs.get('weights')}" if not same_weights else "predates the appearance features")
         log.info("Cache %s — re-running inference", why)
 
     device = pick_device(cfg.model.device)
@@ -146,8 +90,10 @@ def extract_tracks(video: str | Path, cfg: Config, cache: str | Path | None = No
         ids = res.boxes.id.cpu().numpy().astype(int) if res.boxes.id is not None else np.full(len(boxes), -1)
         kxy = res.keypoints.xy.cpu().numpy()              # (N,17,2)
         kc = res.keypoints.conf.cpu().numpy() if res.keypoints.conf is not None else np.ones(kxy.shape[:2])
+        img = res.orig_img
+        feats = [appearance(img, boxes[i], kxy[i], kc[i]) if img is not None else None for i in range(len(boxes))]
 
-        for fighter, i in assigner.assign(boxes).items():
+        for fighter, i in assigner.assign(boxes, feats).items():
             row = {
                 "frame": fi, "t": fi / fps, "fighter": fighter, "track_id": int(ids[i]),
                 "x1": float(boxes[i, 0]), "y1": float(boxes[i, 1]),
@@ -157,13 +103,16 @@ def extract_tracks(video: str | Path, cfg: Config, cache: str | Path | None = No
                 row[f"kp_{name}_x"] = float(kxy[i, k, 0])
                 row[f"kp_{name}_y"] = float(kxy[i, k, 1])
                 row[f"kp_{name}_c"] = float(kc[i, k])
+            fv = feats[i] if feats[i] is not None else np.zeros(APP_DIM, dtype=np.float32)
+            for c, v in zip(APP_COLS, fv):
+                row[c] = float(v)
             rows.append(row)
     if bar:
         bar.close()
 
     df = pd.DataFrame(rows)
     df.attrs.update({"fps": fps, "width": w, "height": h, "video": str(video),
-                     "max_frames": max_frames, "weights": cfg.model.weights})
+                     "max_frames": max_frames, "weights": cfg.model.weights, "schema": TRACKS_SCHEMA})
     if cache:
         write_tracks(df, cache)
     return df

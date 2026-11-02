@@ -18,6 +18,12 @@ fighters:
   min_box_height_frac: 0.15       # drop people shorter than 15% of frame height (crowd, far corners)
   warmup_frames: 15
   max_jump_frac: 0.35
+  w_app: 0.6                      # appearance vs position weight when deciding who is who (0 = position only)
+  swap_margin: 0.12               # how much better the swapped pairing must score before we flip red/blue
+  sep_iou: 0.05                   # only learn a fighter's colours when the two boxes barely overlap
+  tmpl_rate: 0.03
+  repair_identity: true           # offline pass: fix swaps using the whole clip's appearance evidence
+  repair_switch_penalty: 0.6
 
 strikes:
   smooth_alpha: 0.5               # keypoint EMA; lower = smoother but laggier

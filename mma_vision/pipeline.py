@@ -45,7 +45,13 @@ def analyze(tracks, cfg: Config, fps: float, w: int, h: int, out: Path):
     from .strikes import detect_strikes
     from .metrics import frame_series, summarize
     from .charts import summary_card
+    from .identity import fix_identity
 
+    if cfg.fighters.repair_identity:
+        tracks, n_fixed = fix_identity(tracks, switch_penalty=cfg.fighters.repair_switch_penalty,
+                                       sep_iou=cfg.fighters.sep_iou)
+        if n_fixed:
+            log.info("identity repair swapped red/blue on %d frames", n_fixed)
     series, F = build_series(tracks, cfg.strikes.min_conf, cfg.strikes.smooth_alpha)
     events = detect_strikes(series, fps, cfg.strikes)
     fs = frame_series(series, fps, w, h)

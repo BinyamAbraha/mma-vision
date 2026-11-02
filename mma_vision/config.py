@@ -29,6 +29,12 @@ class FighterCfg:
     min_box_height_frac: float = 0.15   # ignore people shorter than 15% of frame height
     warmup_frames: int = 15             # frames used to lock initial red/blue assignment
     max_jump_frac: float = 0.35         # max centroid jump (frac of frame width) to keep identity
+    w_app: float = 0.6                  # weight of appearance (vs position) in the identity cost
+    swap_margin: float = 0.12           # cost margin required to flip red/blue vs. the position-favoured pairing
+    sep_iou: float = 0.05               # boxes with IoU below this count as "separated" (safe to learn appearance)
+    tmpl_rate: float = 0.03             # EMA rate for appearance templates
+    repair_identity: bool = True        # offline Viterbi pass that fixes swaps using the whole clip
+    repair_switch_penalty: float = 0.6  # higher = fewer, longer swap segments
 
 
 @dataclass
