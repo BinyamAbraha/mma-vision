@@ -62,6 +62,15 @@ python -m mma_vision.pipeline analyze outputs/fight/tracks.parquet
 
 Quick test on the first 10 seconds: `--max-frames 300`.
 
+## Who is who
+
+Position alone can't keep red/blue straight when fighters collide, so each detection also gets a
+colour signature (HSV histograms of the shorts and torso). The per-frame assignment weighs position
+and appearance with hysteresis, learns each fighter's colours only while they're apart, and an offline
+pass (2-state Viterbi over the whole clip) repairs any swap the online tracker fell for. Red = the
+fighter on the left in the first second. Tune under `fighters:` in `config.yaml`; set
+`w_app: 0` to see why it's needed.
+
 ## How strike detection works
 
 No training data. For each fighter's wrists and ankles:

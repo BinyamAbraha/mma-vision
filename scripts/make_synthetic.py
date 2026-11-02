@@ -17,7 +17,8 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from mma_vision import KP, KP_NAMES, SKELETON  # noqa: E402
-from mma_vision.detect import write_tracks  # noqa: E402
+from mma_vision.detect import write_tracks, TRACKS_SCHEMA  # noqa: E402
+from mma_vision.identity import appearance, APP_COLS  # noqa: E402
 
 W, H, FPS, SECONDS = 1280, 720, 30, 20
 TORSO = 120.0
@@ -114,21 +115,30 @@ def main(out_video=Path("data/clips/synthetic.mp4"), out_tracks=Path("outputs/sy
 
         frame = np.full((H, W, 3), (40, 44, 52), np.uint8)
         cv2.ellipse(frame, (W // 2, int(H * 0.72)), (520, 160), 0, 0, 360, (70, 75, 85), -1)
+        jit = {f: ks[f] + rng.normal(0, 1.2, ks[f].shape) for f in ks}   # detector jitter
         for f, col in (("red", (60, 60, 230)), ("blue", (230, 140, 50))):
-            k = ks[f] + rng.normal(0, 1.2, ks[f].shape)   # detector jitter
+            k = jit[f]
             for a, b_ in SKELETON:
                 cv2.line(frame, tuple(k[KP[a]].astype(int)), tuple(k[KP[b_]].astype(int)), col, 6, cv2.LINE_AA)
+            # "shorts": a filled quad between hips and knees so the appearance model has something to see
+            quad = np.array([k[KP["l_hip"]], k[KP["r_hip"]], k[KP["r_knee"]], k[KP["l_knee"]]]).astype(int)
+            cv2.fillConvexPoly(frame, quad, col, cv2.LINE_AA)
             cv2.circle(frame, tuple(k[KP["nose"]].astype(int)), 22, col, -1, cv2.LINE_AA)
+        for f in ("red", "blue"):
+            k = jit[f]
             x1, y1 = k.min(0) - 15; x2, y2 = k.max(0) + 15
+            box = np.array([x1, y1, x2, y2])
             row = {"frame": fi, "t": t, "fighter": f, "track_id": 1 if f == "red" else 2,
                    "x1": x1, "y1": y1, "x2": x2, "y2": y2, "box_conf": 0.9}
             for i, n in enumerate(KP_NAMES):
                 row[f"kp_{n}_x"], row[f"kp_{n}_y"], row[f"kp_{n}_c"] = k[i, 0], k[i, 1], 0.95
+            for c, v in zip(APP_COLS, appearance(frame, box, k, np.full(17, 0.95))):
+                row[c] = float(v)
             rows.append(row)
         writer.write(frame)
     writer.release()
     df = pd.DataFrame(rows)
-    df.attrs.update({"fps": FPS, "width": W, "height": H, "video": str(out_video)})
+    df.attrs.update({"fps": FPS, "width": W, "height": H, "video": str(out_video), "schema": TRACKS_SCHEMA})
     write_tracks(df, out_tracks)
     pd.DataFrame(gt).drop_duplicates().to_csv(out_tracks.parent / "ground_truth.csv", index=False)
     print(f"wrote {out_video} ({F} frames) and {out_tracks} + ground_truth.csv ({len(SCRIPT)} strikes)")
