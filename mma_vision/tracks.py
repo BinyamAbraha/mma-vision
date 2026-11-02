@@ -74,9 +74,30 @@ def _ema(arr: np.ndarray, alpha: float) -> np.ndarray:
     return out
 
 
+# (child, parent, max length in torso-heights). Real-world ratios ~0.5–0.6; margin for pose error.
+LIMB_LIMITS = [
+    ("l_wrist", "l_elbow", 0.85), ("r_wrist", "r_elbow", 0.85),
+    ("l_elbow", "l_shoulder", 0.85), ("r_elbow", "r_shoulder", 0.85),
+    ("l_ankle", "l_knee", 1.0), ("r_ankle", "r_knee", 1.0),
+    ("l_knee", "l_hip", 1.0), ("r_knee", "r_hip", 1.0),
+]
+
+
+def _drop_impossible_limbs(kp: np.ndarray, scale: np.ndarray, max_len: float = 1.0) -> np.ndarray:
+    """NaN-out child joints whose segment to the parent is longer than physically possible.
+    Processed parent-first so a stolen elbow also invalidates the wrist hanging off it."""
+    out = kp.copy()
+    for child, parent, lim in sorted(LIMB_LIMITS, key=lambda t: t[1].endswith(("shoulder", "hip")), reverse=True):
+        c, p = out[:, KP[child], :], out[:, KP[parent], :]
+        d = np.linalg.norm(c - p, axis=1) / scale
+        bad = ~np.isnan(d) & (d > lim * max_len)
+        out[bad, KP[child], :] = np.nan
+    return out
+
+
 def build_series(df: pd.DataFrame, min_conf: float = 0.3, smooth_alpha: float = 0.6,
-                 gap_limit: int = 5) -> tuple[dict[str, FighterSeries], int]:
-    """Returns ({fighter: FighterSeries}, n_frames)."""
+                 gap_limit: int = 5, max_len: float = 1.0) -> tuple[dict[str, FighterSeries], int]:
+    """Returns ({fighter: FighterSeries}, n_frames). max_len scales LIMB_LIMITS (1.0 = defaults)."""
     if df.empty:
         raise ValueError("No tracks — did detection find any people?")
     F = int(df["frame"].max()) + 1
@@ -101,8 +122,6 @@ def build_series(df: pd.DataFrame, min_conf: float = 0.3, smooth_alpha: float = 
         # Drop low-confidence / zero keypoints (YOLO emits (0,0) for invisible joints)
         bad = (conf < min_conf) | ((kp[..., 0] == 0) & (kp[..., 1] == 0))
         kp[bad] = np.nan
-        kp = _interp_nan(kp, gap_limit)
-        kp = _ema(kp, smooth_alpha)
 
         # Scale: torso height (shoulder-mid to hip-mid). Rolling median, filled.
         sh = np.nanmean(kp[:, [KP["l_shoulder"], KP["r_shoulder"]], :], axis=1)
@@ -115,5 +134,13 @@ def build_series(df: pd.DataFrame, min_conf: float = 0.3, smooth_alpha: float = 
             bh = pd.Series(box[:, 3] - box[:, 1]).bfill().ffill()
             s = (bh * 0.35).fillna(100.0)
         scale = np.maximum(s.to_numpy(), 1e-3)
+
+        # Anatomy check: when two bodies overlap, pose models "steal" limbs — one fighter's wrist gets
+        # attached to the other's skeleton. A 2D projection can only SHORTEN a limb, so any segment
+        # longer than its real length (in torso units) is impossible. Drop those joints.
+        kp = _drop_impossible_limbs(kp, scale, max_len)
+
+        kp = _interp_nan(kp, gap_limit)
+        kp = _ema(kp, smooth_alpha)
         out[f] = FighterSeries(f, kp, conf, box, present, scale)
     return out, F

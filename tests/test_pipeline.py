@@ -41,3 +41,27 @@ def test_synthetic_end_to_end(tmp_path):
 def test_cli_help():
     r = subprocess.run([sys.executable, "-m", "mma_vision.pipeline", "--help"], cwd=ROOT, capture_output=True, text=True)
     assert r.returncode == 0 and "rerender" in r.stdout
+
+
+def test_keypoint_teleport_is_not_a_strike():
+    """A wrist keypoint that jumps onto the opponent's glove for a few frames (pose model 'stealing'
+    a limb) must not be credited as a punch — even though it's fast, toward the opponent and extended."""
+    import numpy as np
+    from mma_vision.config import Config
+    from mma_vision.detect import read_tracks
+    from mma_vision.tracks import build_series
+    from mma_vision.strikes import detect_strikes
+
+    df = read_tracks(ROOT / "outputs" / "synthetic" / "tracks.csv")
+    cfg = Config()
+    # inject: in frames 100-104 (a quiet stretch), red's r_wrist takes blue's r_wrist position
+    bad = df.copy()
+    for fr in range(100, 105):
+        b = bad[(bad.frame == fr) & (bad.fighter == "blue")].iloc[0]
+        m = (bad.frame == fr) & (bad.fighter == "red")
+        bad.loc[m, "kp_r_wrist_x"] = b["kp_r_wrist_x"]
+        bad.loc[m, "kp_r_wrist_y"] = b["kp_r_wrist_y"]
+    series, _ = build_series(bad, cfg.strikes.min_conf, cfg.strikes.smooth_alpha, max_len=cfg.strikes.max_limb_len)
+    ev = detect_strikes(series, 30.0, cfg.strikes)
+    phantom = ev[(ev.fighter == "red") & (ev.limb == "r_wrist") & ev.frame.between(95, 115)]
+    assert len(phantom) == 0, f"teleport counted as strike: {phantom[['frame','speed','ext','support']].values.tolist()}"
