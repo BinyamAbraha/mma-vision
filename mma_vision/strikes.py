@@ -131,29 +131,26 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
             cool = cfg.cooldown if kind == "punch" else cfg.cooldown_kick
             for p in _local_peaks(speed, mask, cool):
                 nb = np.concatenate([speed[max(0, p - 2):p], speed[p + 1:p + 3]])
-                support = int(np.sum(nb > 0.35 * speed[p]))
+                support = int(np.sum(nb > cfg.support_frac * speed[p]))
                 if lift is not None:
                     lw = lift[p:min(len(lift), p + 7)]
                     if np.all(np.isnan(lw)) or np.nanmax(lw) < cfg.min_kick_lift:
                         continue
-                # Impact ~ max extension shortly after the speed peak
-                w_end = min(len(ext), p + 6)
-                win = ext[p:w_end]
+                # Impact = closest approach to the opponent after the speed peak. (Max extension was
+                # wrong for kicks: the speed peak happens while the leg is still chambered.)
+                w_end = min(len(ext), p + (cfg.impact_window if kind == "punch" else cfg.impact_window_kick) + 1)
+                win = np.linalg.norm(pos[p:w_end] - opp_center[p:w_end], axis=1)
                 if np.all(np.isnan(win)):
                     continue
-                imp = p + int(np.nanargmax(win))
+                imp = p + int(np.nanargmin(win))
                 tip = pos[imp]
                 if np.any(np.isnan(tip)) or np.isnan(ext[imp]):
                     continue
                 lo = max(0, p - cfg.ext_lookback)
-                if kind == "punch":
-                    base = ext[lo:p]
-                    gain = float(ext[imp] - np.nanmin(base)) if base.size and not np.all(np.isnan(base)) else np.nan
-                    travel = np.nan
-                else:
-                    prior = pos[lo:p]
-                    travel = float(np.nanmax(np.linalg.norm(prior - tip, axis=1)) / scale[imp]) if prior.size and not np.all(np.isnan(prior)) else np.nan
-                    gain = np.nan
+                base = ext[lo:p]
+                gain = float(ext[imp] - np.nanmin(base)) if base.size and not np.all(np.isnan(base)) else np.nan
+                prior = pos[lo:p]
+                travel = float(np.nanmax(np.linalg.norm(prior - tip, axis=1)) / scale[imp]) if prior.size and not np.all(np.isnan(prior)) else np.nan
                 # Ownership: is this tip really A's? Compare distance to A's own joint (elbow/knee) with
                 # distance to B's nearest matching joints. A stolen glove sits on B's forearm.
                 own_joint = limb.replace("wrist", "elbow").replace("ankle", "knee")
@@ -220,19 +217,17 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
         min_ext = (cfg.min_ext_punch if kind == "punch" else cfg.min_ext_kick) * relax
         if c["ext"] < min_ext:
             reject(c, "not_extended"); continue
-        # Gate 2: punches go retracted -> extended (relaxed inside a combo); kicks must travel.
-        if kind == "punch":
-            if not np.isnan(c["ext_gain"]) and c["ext_gain"] < cfg.min_ext_gain * relax:
-                reject(c, "no_retraction"); continue
-        else:
-            if not np.isnan(c["travel"]) and c["travel"] < cfg.min_kick_travel:
-                reject(c, "no_travel"); continue
+        # Gate 2: the tip must have TRAVELLED (a body shot goes chin-guard -> ribs without extending
+        # much, so retraction gain is the wrong instrument; displacement isn't).
+        min_travel = (cfg.min_punch_travel if kind == "punch" else cfg.min_kick_travel) * relax
+        if not np.isnan(c["travel"]) and c["travel"] < min_travel:
+            reject(c, "no_travel"); continue
 
         dmin, react, speed = c["land_dist"], c["head_react"], c["speed"]
         react = 0.0 if np.isnan(react) else react
         landed = bool(dmin < cfg.land_dist or (dmin < 1.5 * cfg.land_dist and react > cfg.head_react_vel))
         if not landed:
-            if dmin > cfg.max_miss_dist:
+            if dmin > (cfg.max_miss_dist if kind == "punch" else cfg.max_miss_dist_kick):
                 reject(c, "miss_too_far"); continue
             if speed < vthr * cfg.miss_speed_mult:
                 reject(c, "miss_too_slow"); continue
