@@ -96,7 +96,10 @@ def _local_peaks(x: np.ndarray, mask: np.ndarray, cooldown: int) -> list[int]:
 
 
 def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg) -> pd.DataFrame:
-    events: list[dict] = []
+    """Two passes. (1) Per limb: find speed peaks toward the opponent and compute every feature we
+    gate on. (2) In time order per fighter: apply the gates, relaxing the retraction gate when the
+    fighter has just landed/thrown something (combinations don't fully retract between punches)."""
+    cands: list[dict] = []
     names = list(series.keys())
     for me in names:
         opp = [n for n in names if n != me][0]
@@ -134,25 +137,17 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
                     continue
                 imp = p + int(np.nanargmax(win))
                 tip = pos[imp]
-                if np.any(np.isnan(tip)):
+                if np.any(np.isnan(tip)) or np.isnan(ext[imp]):
                     continue
-                # Gate 1: the limb must actually be extended at impact (kills guard twitches / feints)
-                min_ext = cfg.min_ext_punch if kind == "punch" else cfg.min_ext_kick
-                if np.isnan(ext[imp]) or ext[imp] < min_ext:
-                    continue
-                # Gate 2: punches must go retracted -> extended; kicks must travel (a kicking leg stays
-                # about the same length, so hip-ankle distance is a poor signal — use tip displacement).
                 lo = max(0, p - cfg.ext_lookback)
                 if kind == "punch":
                     base = ext[lo:p]
-                    if base.size and not np.all(np.isnan(base)) and (ext[imp] - np.nanmin(base)) < cfg.min_ext_gain:
-                        continue
+                    gain = float(ext[imp] - np.nanmin(base)) if base.size and not np.all(np.isnan(base)) else np.nan
+                    travel = np.nan
                 else:
                     prior = pos[lo:p]
-                    if prior.size and not np.all(np.isnan(prior)):
-                        travel = np.nanmax(np.linalg.norm(prior - tip, axis=1)) / scale[imp]
-                        if travel < cfg.min_kick_travel:
-                            continue
+                    travel = float(np.nanmax(np.linalg.norm(prior - tip, axis=1)) / scale[imp]) if prior.size and not np.all(np.isnan(prior)) else np.nan
+                    gain = np.nan
                 dists = _target_dists(tip, B, imp, kind, scale[imp])
                 if not dists:
                     continue
@@ -165,23 +160,57 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
                 dmin = dists[target]
 
                 r_end = min(len(opp_head_speed), imp + cfg.react_window + 1)
-                base = np.nanmedian(opp_head_speed[max(0, imp - 10):imp]) if imp > 2 else 0.0
-                react = float(np.nanmax(opp_head_speed[imp:r_end]) - (0 if np.isnan(base) else base)) if r_end > imp else 0.0
+                hb = np.nanmedian(opp_head_speed[max(0, imp - 10):imp]) if imp > 2 else 0.0
+                react = float(np.nanmax(opp_head_speed[imp:r_end]) - (0 if np.isnan(hb) else hb)) if r_end > imp else 0.0
 
-                landed = bool(dmin < cfg.land_dist or (dmin < 1.5 * cfg.land_dist and react > cfg.head_react_vel))
-                # crude confidence: closeness + reaction + speed margin
-                conf = float(np.clip(
-                    0.5 * np.clip(1 - dmin / (2 * cfg.land_dist), 0, 1)
-                    + 0.3 * np.clip(react / (2 * cfg.head_react_vel), 0, 1)
-                    + 0.2 * np.clip((speed[p] - cfg.vel_thresh) / cfg.vel_thresh, 0, 1), 0, 1))
-                if not landed and conf < cfg.min_miss_conf:
-                    continue
-                events.append({
-                    "frame": int(imp), "t": imp / fps, "fighter": me, "limb": limb, "kind": kind,
-                    "target": target, "landed": landed, "speed": float(speed[p]),
-                    "land_dist": float(dmin), "head_react": react, "conf": conf,
+                cands.append({
+                    "frame": int(imp), "peak": int(p), "t": imp / fps, "fighter": me, "limb": limb, "kind": kind,
+                    "target": target, "speed": float(speed[p]), "cos": float(cos[p]), "ext": float(ext[imp]),
+                    "ext_gain": gain, "travel": travel, "land_dist": float(dmin), "head_react": react,
                 })
-    cols = ["frame", "t", "fighter", "limb", "kind", "target", "landed", "speed", "land_dist", "head_react", "conf"]
+
+    # ---- pass 2: gates, in time order, with combo context
+    events: list[dict] = []
+    last_strike: dict[str, int] = {}
+    for c in sorted(cands, key=lambda d: d["frame"]):
+        kind, me = c["kind"], c["fighter"]
+        in_combo = me in last_strike and 0 < c["frame"] - last_strike[me] <= cfg.combo_window
+        relax = cfg.combo_relax if in_combo else 1.0
+
+        # Gate 1: limb actually extended at impact (kills guard twitches / feints). Hooks are bent, so
+        # the punch threshold is deliberately modest.
+        min_ext = (cfg.min_ext_punch if kind == "punch" else cfg.min_ext_kick) * relax
+        if c["ext"] < min_ext:
+            continue
+        # Gate 2: punches go retracted -> extended (relaxed inside a combo); kicks must travel.
+        if kind == "punch":
+            if not np.isnan(c["ext_gain"]) and c["ext_gain"] < cfg.min_ext_gain * relax:
+                continue
+        else:
+            if not np.isnan(c["travel"]) and c["travel"] < cfg.min_kick_travel:
+                continue
+
+        dmin, react, speed = c["land_dist"], c["head_react"], c["speed"]
+        landed = bool(dmin < cfg.land_dist or (dmin < 1.5 * cfg.land_dist and react > cfg.head_react_vel))
+        if not landed:
+            # A real miss passes close to the target. Hand-fighting / feints / reaching at range don't.
+            if dmin > cfg.max_miss_dist:
+                continue
+            vthr = cfg.vel_thresh if kind == "punch" else cfg.vel_thresh_kick
+            if speed < vthr * cfg.miss_speed_mult:
+                continue
+        conf = float(np.clip(
+            0.5 * np.clip(1 - dmin / (2 * cfg.land_dist), 0, 1)
+            + 0.3 * np.clip(react / (2 * cfg.head_react_vel), 0, 1)
+            + 0.2 * np.clip((speed - cfg.vel_thresh) / cfg.vel_thresh, 0, 1), 0, 1))
+        if not landed and conf < cfg.min_miss_conf:
+            continue
+        last_strike[me] = c["frame"]
+        c = dict(c); c["landed"] = landed; c["conf"] = conf
+        events.append(c)
+
+    cols = ["frame", "t", "fighter", "limb", "kind", "target", "landed", "speed", "land_dist", "head_react", "conf",
+            "ext", "ext_gain", "travel", "cos", "peak"]
     ev = pd.DataFrame(events, columns=cols).sort_values("frame").reset_index(drop=True)
     return ev
 
