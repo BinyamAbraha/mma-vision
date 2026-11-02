@@ -27,8 +27,11 @@ fighters:
 
 strikes:
   smooth_alpha: 0.65              # keypoint EMA; lower = smoother but merges fast combos
-  vel_thresh: 0.12                # punch: (torso/frame) wrist speed to count as a strike. Raise if too many FPs.
-  vel_thresh_kick: 0.18           # kick: ankle speed threshold — kicks are much faster than steps
+  vel_thresh: 0.16                # punch: (torso/frame) wrist speed to count as a strike. Real punches run 0.4+; jitter ~0.15.
+  vel_thresh_kick: 0.2            # kick: ankle speed threshold — kicks are much faster than steps
+  clinch_range: 0.9               # (torso, hip-to-hip) closer than this counts as the clinch/pocket
+  clinch_speed_mult: 1.5          # in the clinch, speed thresholds x1.5 — every hand twitch is 'near the target' there
+  max_head_react: 0.5             # head 'reactions' faster than this are keypoint jumps, not snaps
   min_kick_lift: 0.3              # kick: kicking ankle must rise this far (torso) above the standing ankle
   toward_cos: 0.3                 # limb must move toward the opponent (low enough for hooks)
   min_ext_punch: 0.65             # (torso) wrist-to-shoulder distance at impact — kills guard twitches, allows hooks
@@ -39,7 +42,9 @@ strikes:
   land_dist: 0.35                 # (torso) gap between limb tip and target surface to call it landed. Raise if real hits read as misses.
   head_react_vel: 0.03            # opponent head snap that confirms a landed shot
   react_window: 6
-  cooldown: 6                     # frames before same limb can strike again (6 @30fps allows a double jab)
+  cooldown: 8                     # frames before the same hand can punch again
+  cooldown_kick: 15               # frames before the same leg can kick again
+  min_gap_any: 4                  # min frames between any two strikes by one fighter
   combo_window: 15                # frames after a strike in which the next one is treated as part of a combo
   combo_relax: 0.6                # extension/retraction gates are multiplied by this inside a combo
   max_miss_dist: 0.9              # (torso) misses further than this from the target are hand-fighting, dropped

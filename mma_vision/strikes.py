@@ -107,6 +107,9 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
         scale = A.scale
         opp_center = B.torso_center
         _, opp_head_speed = _speed(B.head, B.scale)
+        # a head "reaction" faster than this is a keypoint jump, not a snap — ignore it
+        opp_head_speed = np.where(opp_head_speed > cfg.max_head_react, np.nan, opp_head_speed)
+        hip_dist = np.linalg.norm(A.hip_center - B.hip_center, axis=1) / ((A.scale + B.scale) / 2)
 
         for limb, (anchor, kind) in LIMBS.items():
             pos = A.pt(limb)
@@ -125,7 +128,8 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
                 # the kicking ankle must rise well above the other (standing) ankle. Image y grows downward.
                 other = "r_ankle" if limb == "l_ankle" else "l_ankle"
                 lift = (A.pt(other)[:, 1] - pos[:, 1]) / scale
-            for p in _local_peaks(speed, mask, cfg.cooldown):
+            cool = cfg.cooldown if kind == "punch" else cfg.cooldown_kick
+            for p in _local_peaks(speed, mask, cool):
                 nb = np.concatenate([speed[max(0, p - 2):p], speed[p + 1:p + 3]])
                 support = int(np.sum(nb > 0.35 * speed[p]))
                 if lift is not None:
@@ -175,58 +179,78 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
 
                 cands.append({
                     "frame": int(imp), "peak": int(p), "t": imp / fps, "fighter": me, "limb": limb, "kind": kind,
+                    "range": float(hip_dist[imp]) if not np.isnan(hip_dist[imp]) else np.nan,
                     "target": target, "speed": float(speed[p]), "cos": float(cos[p]), "ext": float(ext[imp]),
                     "ext_gain": gain, "travel": travel, "land_dist": float(dmin), "head_react": react,
                     "owner_ratio": owner_ratio, "support": support,
                 })
 
-    # ---- pass 2: gates, in time order, with combo context
+    # ---- pass 2: gates, in time order, with combo context. Every candidate gets a verdict so
+    # rejected ones can be inspected (candidates.csv) when tuning.
     events: list[dict] = []
-    last_strike: dict[str, int] = {}
-    for c in sorted(cands, key=lambda d: d["frame"]):
-        kind, me = c["kind"], c["fighter"]
+    verdicts: list[dict] = []
+    last_strike: dict[str, int] = {}          # fighter -> last accepted impact frame
+    last_limb: dict[tuple, int] = {}          # (fighter, limb) -> last accepted impact frame
+
+    def reject(c, why):
+        v = dict(c); v["rejected_by"] = why; verdicts.append(v)
+
+    for c in sorted(cands, key=lambda d: (d["frame"], -d["speed"])):
+        kind, me, limb = c["kind"], c["fighter"], c["limb"]
         in_combo = me in last_strike and 0 < c["frame"] - last_strike[me] <= cfg.combo_window
         relax = cfg.combo_relax if in_combo else 1.0
+        in_clinch = not np.isnan(c["range"]) and c["range"] < cfg.clinch_range
+        vthr = cfg.vel_thresh if kind == "punch" else cfg.vel_thresh_kick
+        if in_clinch:
+            vthr *= cfg.clinch_speed_mult      # in the pocket every twitch is "near the target"
 
-        # Gate 0: a real strike accelerates over several frames. A keypoint that teleports (the pose
-        # model re-attaching a glove from one fighter to the other) is a one-frame spike with ~zero
-        # speed either side. Require the peak to be supported by its neighbours.
+        # Gate 0: a real strike accelerates over several frames; a keypoint teleport is a one-frame spike.
         if c["support"] < cfg.min_peak_support:
-            continue
-        # Gate 1: limb actually extended at impact (kills guard twitches / feints). Hooks are bent, so
-        # the punch threshold is deliberately modest.
+            reject(c, "teleport"); continue
+        # Gate 0b: two strikes by one fighter can't land closer together than this (even a 1-2 is ~5 frames)
+        if me in last_strike and 0 <= c["frame"] - last_strike[me] < cfg.min_gap_any:
+            reject(c, "too_soon_any"); continue
+        cool = cfg.cooldown if kind == "punch" else cfg.cooldown_kick
+        if (me, limb) in last_limb and 0 <= c["frame"] - last_limb[(me, limb)] < cool:
+            reject(c, "too_soon_same_limb"); continue
+        # Gate 0c: speed (with clinch multiplier)
+        if c["speed"] < vthr:
+            reject(c, "slow_clinch" if in_clinch else "slow"); continue
+        # Gate 1: limb actually extended at impact (kills guard twitches / feints). Hooks are bent.
         min_ext = (cfg.min_ext_punch if kind == "punch" else cfg.min_ext_kick) * relax
         if c["ext"] < min_ext:
-            continue
+            reject(c, "not_extended"); continue
         # Gate 2: punches go retracted -> extended (relaxed inside a combo); kicks must travel.
         if kind == "punch":
             if not np.isnan(c["ext_gain"]) and c["ext_gain"] < cfg.min_ext_gain * relax:
-                continue
+                reject(c, "no_retraction"); continue
         else:
             if not np.isnan(c["travel"]) and c["travel"] < cfg.min_kick_travel:
-                continue
+                reject(c, "no_travel"); continue
 
         dmin, react, speed = c["land_dist"], c["head_react"], c["speed"]
+        react = 0.0 if np.isnan(react) else react
         landed = bool(dmin < cfg.land_dist or (dmin < 1.5 * cfg.land_dist and react > cfg.head_react_vel))
         if not landed:
-            # A real miss passes close to the target. Hand-fighting / feints / reaching at range don't.
             if dmin > cfg.max_miss_dist:
-                continue
-            vthr = cfg.vel_thresh if kind == "punch" else cfg.vel_thresh_kick
+                reject(c, "miss_too_far"); continue
             if speed < vthr * cfg.miss_speed_mult:
-                continue
+                reject(c, "miss_too_slow"); continue
         conf = float(np.clip(
             0.5 * np.clip(1 - dmin / (2 * cfg.land_dist), 0, 1)
             + 0.3 * np.clip(react / (2 * cfg.head_react_vel), 0, 1)
-            + 0.2 * np.clip((speed - cfg.vel_thresh) / cfg.vel_thresh, 0, 1), 0, 1))
+            + 0.2 * np.clip((speed - vthr) / vthr, 0, 1), 0, 1))
         if not landed and conf < cfg.min_miss_conf:
-            continue
+            reject(c, "low_conf_miss"); continue
         last_strike[me] = c["frame"]
-        c = dict(c); c["landed"] = landed; c["conf"] = conf
+        last_limb[(me, limb)] = c["frame"]
+        c = dict(c); c["landed"] = landed; c["conf"] = conf; c["in_combo"] = in_combo; c["in_clinch"] = in_clinch
         events.append(c)
+        v = dict(c); v["rejected_by"] = ""; verdicts.append(v)
 
+    detect_strikes.last_candidates = pd.DataFrame(verdicts).sort_values("frame").reset_index(drop=True) if verdicts else pd.DataFrame()
     cols = ["frame", "t", "fighter", "limb", "kind", "target", "landed", "speed", "land_dist", "head_react", "conf",
-            "ext", "ext_gain", "travel", "cos", "owner_ratio", "support", "peak"]
+            "ext", "ext_gain", "travel", "cos", "support", "range", "in_combo", "in_clinch", "peak"]
     ev = pd.DataFrame(events, columns=cols).sort_values("frame").reset_index(drop=True)
     return ev
 

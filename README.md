@@ -45,7 +45,8 @@ Outputs in `outputs/<clip>/`:
 | `annotated.mp4` | overlay video — skeletons, strike flashes, live stat panel, cage minimap |
 | `summary.png` | shareable stat card (totals, by target, landed-over-time, range) |
 | `summary.json` | per-fighter numbers: thrown/landed/accuracy/pace, by kind & target, per round, guard drop, centre control |
-| `events.csv` | every strike: frame, fighter, limb, kind, target, landed, confidence |
+| `events.csv` | every strike: frame, fighter, limb, kind, target, landed, confidence + the raw features it was judged on |
+| `candidates.csv` | every *candidate* motion, accepted or not, with `rejected_by` — the file to look at when a strike is missed |
 | `frames.csv` | per-frame distance, range bucket, guard height, position, movement |
 | `tracks.parquet` | raw keypoints — **cached**, so inference never re-runs |
 
