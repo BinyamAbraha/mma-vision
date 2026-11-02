@@ -56,6 +56,8 @@ class StrikeCfg:
     combo_window: int = 15            # frames after a strike during which the next one counts as a combo
     combo_relax: float = 0.6          # multiply extension/retraction gates by this inside a combo
     max_miss_dist: float = 0.9        # (torso) a miss further than this from the target is hand-fighting, not a strike
+    min_peak_support: int = 2         # neighbouring frames (of 4) that must carry >=35% of peak speed — kills keypoint teleports
+    max_limb_len: float = 1.0         # multiplier on anatomical limb-length limits used to drop 'stolen' joints
     miss_speed_mult: float = 1.3      # a miss needs this x the speed threshold (landed shots don't)
     min_conf: float = 0.3             # keypoint confidence below this is treated as missing
     min_miss_conf: float = 0.0        # optional extra FP guard: drop *missed* strikes with conf below this

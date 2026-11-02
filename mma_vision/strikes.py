@@ -126,6 +126,8 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
                 other = "r_ankle" if limb == "l_ankle" else "l_ankle"
                 lift = (A.pt(other)[:, 1] - pos[:, 1]) / scale
             for p in _local_peaks(speed, mask, cfg.cooldown):
+                nb = np.concatenate([speed[max(0, p - 2):p], speed[p + 1:p + 3]])
+                support = int(np.sum(nb > 0.35 * speed[p]))
                 if lift is not None:
                     lw = lift[p:min(len(lift), p + 7)]
                     if np.all(np.isnan(lw)) or np.nanmax(lw) < cfg.min_kick_lift:
@@ -148,6 +150,14 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
                     prior = pos[lo:p]
                     travel = float(np.nanmax(np.linalg.norm(prior - tip, axis=1)) / scale[imp]) if prior.size and not np.all(np.isnan(prior)) else np.nan
                     gain = np.nan
+                # Ownership: is this tip really A's? Compare distance to A's own joint (elbow/knee) with
+                # distance to B's nearest matching joints. A stolen glove sits on B's forearm.
+                own_joint = limb.replace("wrist", "elbow").replace("ankle", "knee")
+                d_own = np.linalg.norm(tip - A.pt(own_joint)[imp]) / scale[imp]
+                opp_joints = ("l_elbow", "r_elbow") if kind == "punch" else ("l_knee", "r_knee")
+                d_opp = np.nanmin([np.linalg.norm(tip - B.pt(j)[imp]) for j in opp_joints]) / scale[imp]
+                owner_ratio = float(d_own / d_opp) if not (np.isnan(d_own) or np.isnan(d_opp)) and d_opp > 0 else np.nan
+
                 dists = _target_dists(tip, B, imp, kind, scale[imp])
                 if not dists:
                     continue
@@ -167,6 +177,7 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
                     "frame": int(imp), "peak": int(p), "t": imp / fps, "fighter": me, "limb": limb, "kind": kind,
                     "target": target, "speed": float(speed[p]), "cos": float(cos[p]), "ext": float(ext[imp]),
                     "ext_gain": gain, "travel": travel, "land_dist": float(dmin), "head_react": react,
+                    "owner_ratio": owner_ratio, "support": support,
                 })
 
     # ---- pass 2: gates, in time order, with combo context
@@ -177,6 +188,11 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
         in_combo = me in last_strike and 0 < c["frame"] - last_strike[me] <= cfg.combo_window
         relax = cfg.combo_relax if in_combo else 1.0
 
+        # Gate 0: a real strike accelerates over several frames. A keypoint that teleports (the pose
+        # model re-attaching a glove from one fighter to the other) is a one-frame spike with ~zero
+        # speed either side. Require the peak to be supported by its neighbours.
+        if c["support"] < cfg.min_peak_support:
+            continue
         # Gate 1: limb actually extended at impact (kills guard twitches / feints). Hooks are bent, so
         # the punch threshold is deliberately modest.
         min_ext = (cfg.min_ext_punch if kind == "punch" else cfg.min_ext_kick) * relax
@@ -210,7 +226,7 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
         events.append(c)
 
     cols = ["frame", "t", "fighter", "limb", "kind", "target", "landed", "speed", "land_dist", "head_react", "conf",
-            "ext", "ext_gain", "travel", "cos", "peak"]
+            "ext", "ext_gain", "travel", "cos", "owner_ratio", "support", "peak"]
     ev = pd.DataFrame(events, columns=cols).sort_values("frame").reset_index(drop=True)
     return ev
 

@@ -44,6 +44,8 @@ strikes:
   combo_relax: 0.6                # extension/retraction gates are multiplied by this inside a combo
   max_miss_dist: 0.9              # (torso) misses further than this from the target are hand-fighting, dropped
   miss_speed_mult: 1.3            # a miss must be this x faster than the speed threshold (landed shots needn't)
+  min_peak_support: 2             # of the 4 frames around the speed peak, this many must be >=35% of it (one-frame keypoint jumps are not strikes)
+  max_limb_len: 1.0               # anatomical limb-length limit multiplier; joints further than possible from their parent are dropped
   min_conf: 0.3
   min_miss_conf: 0.0              # optional: drop misses below this confidence (0 = off)
 
