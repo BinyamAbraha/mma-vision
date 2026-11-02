@@ -56,6 +56,9 @@ class StrikeCfg:
     min_kick_travel: float = 0.5      # kick: ankle must have moved this far (torso) within the lookback window
     ext_lookback: int = 8             # frames before the speed peak used for the extension/travel baseline
     land_dist: float = 0.35           # gap (torso) between limb tip and target SURFACE to call it landed
+    land_dist_kick_tight: float = 0.12  # body/leg kicks: landed on distance alone only if this close...
+    body_react_vel: float = 0.05      # ...otherwise the opponent's hips must get shoved (torso/frame)
+    cut_guard: int = 10               # ignore candidates within this many frames of a camera cut
     head_react_vel: float = 0.03      # opponent head speed jump after impact that confirms a landed shot
     react_window: int = 6             # frames to look for head reaction after peak
     cooldown: int = 8                 # frames before the same hand can punch again (8 @30fps ≈ a fast double jab)

@@ -110,6 +110,11 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
         # a head "reaction" faster than this is a keypoint jump, not a snap — ignore it
         opp_head_speed = np.where(opp_head_speed > cfg.max_head_react, np.nan, opp_head_speed)
         hip_dist = np.linalg.norm(A.hip_center - B.hip_center, axis=1) / ((A.scale + B.scale) / 2)
+        # opponent body displacement (torso/frame): a landed kick/teep shoves the hips back; a miss doesn't
+        _, opp_body_speed = _speed(B.hip_center, B.scale)
+        opp_body_speed = np.where(opp_body_speed > cfg.max_head_react, np.nan, opp_body_speed)
+        cuts = A.cuts if A.cuts is not None else np.zeros(len(scale), dtype=bool)
+        cut_idx = np.where(cuts)[0]
 
         for limb, (anchor, kind) in LIMBS.items():
             pos = A.pt(limb)
@@ -130,6 +135,7 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
                 lift = (A.pt(other)[:, 1] - pos[:, 1]) / scale
             cool = cfg.cooldown if kind == "punch" else cfg.cooldown_kick
             for p in _local_peaks(speed, mask, cool):
+                near_cut = bool(len(cut_idx)) and bool(np.min(np.abs(cut_idx - p)) <= cfg.cut_guard)
                 nb = np.concatenate([speed[max(0, p - 2):p], speed[p + 1:p + 3]])
                 support = int(np.sum(nb > cfg.support_frac * speed[p]))
                 if lift is not None:
@@ -173,13 +179,18 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
                 r_end = min(len(opp_head_speed), imp + cfg.react_window + 1)
                 hb = np.nanmedian(opp_head_speed[max(0, imp - 10):imp]) if imp > 2 else 0.0
                 react = float(np.nanmax(opp_head_speed[imp:r_end]) - (0 if np.isnan(hb) else hb)) if r_end > imp else 0.0
+                bb = np.nanmedian(opp_body_speed[max(0, imp - 10):imp]) if imp > 2 else 0.0
+                body_react = float(np.nanmax(opp_body_speed[imp:r_end]) - (0 if np.isnan(bb) else bb)) if r_end > imp else 0.0
+                if np.isnan(body_react):
+                    body_react = 0.0
 
                 cands.append({
                     "frame": int(imp), "peak": int(p), "t": imp / fps, "fighter": me, "limb": limb, "kind": kind,
                     "range": float(hip_dist[imp]) if not np.isnan(hip_dist[imp]) else np.nan,
                     "target": target, "speed": float(speed[p]), "cos": float(cos[p]), "ext": float(ext[imp]),
                     "ext_gain": gain, "travel": travel, "land_dist": float(dmin), "head_react": react,
-                    "owner_ratio": owner_ratio, "support": support,
+                    "owner_ratio": owner_ratio, "support": support, "body_react": body_react,
+                    "near_cut": near_cut,
                 })
 
     # ---- pass 2: gates, in time order, with combo context. Every candidate gets a verdict so
@@ -201,6 +212,9 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
         if in_clinch:
             vthr *= cfg.clinch_speed_mult      # in the pocket every twitch is "near the target"
 
+        # Gate -1: camera cut nearby — every joint jumped, nothing here is a strike
+        if c["near_cut"]:
+            reject(c, "scene_cut"); continue
         # Gate 0: a real strike accelerates over several frames; a keypoint teleport is a one-frame spike.
         if c["support"] < cfg.min_peak_support:
             reject(c, "teleport"); continue
@@ -225,7 +239,13 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
 
         dmin, react, speed = c["land_dist"], c["head_react"], c["speed"]
         react = 0.0 if np.isnan(react) else react
-        landed = bool(dmin < cfg.land_dist or (dmin < 1.5 * cfg.land_dist and react > cfg.head_react_vel))
+        if kind == "kick" and c["target"] in ("body", "leg"):
+            # 2D can't tell a foot that stops short-but-offset-in-depth from one that lands. Physics can:
+            # a landed kick/teep moves the opponent. Need a very tight distance OR a visible shove.
+            shoved = c["body_react"] > cfg.body_react_vel
+            landed = bool(dmin < cfg.land_dist_kick_tight or (dmin < 1.5 * cfg.land_dist and shoved))
+        else:
+            landed = bool(dmin < cfg.land_dist or (dmin < 1.5 * cfg.land_dist and react > cfg.head_react_vel))
         if not landed:
             if dmin > (cfg.max_miss_dist if kind == "punch" else cfg.max_miss_dist_kick):
                 reject(c, "miss_too_far"); continue
@@ -245,7 +265,7 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
 
     detect_strikes.last_candidates = pd.DataFrame(verdicts).sort_values("frame").reset_index(drop=True) if verdicts else pd.DataFrame()
     cols = ["frame", "t", "fighter", "limb", "kind", "target", "landed", "speed", "land_dist", "head_react", "conf",
-            "ext", "ext_gain", "travel", "cos", "support", "range", "in_combo", "in_clinch", "peak"]
+            "ext", "ext_gain", "travel", "cos", "support", "body_react", "range", "in_combo", "in_clinch", "near_cut", "peak"]
     ev = pd.DataFrame(events, columns=cols).sort_values("frame").reset_index(drop=True)
     return ev
 

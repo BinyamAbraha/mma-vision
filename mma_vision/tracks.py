@@ -22,6 +22,7 @@ class FighterSeries:
     box: np.ndarray         # (F,4) xyxy, NaN where missing
     present: np.ndarray     # (F,) bool
     scale: np.ndarray       # (F,) torso height in px (rolling median, never NaN)
+    cuts: np.ndarray = None  # (F,) bool — True on frames where the camera cut (shared by both fighters)
 
     def pt(self, name: str) -> np.ndarray:
         return self.kp[:, KP[name], :]
@@ -58,8 +59,9 @@ def _interp_nan(arr: np.ndarray, limit: int) -> np.ndarray:
     return flat.reshape(arr.shape)
 
 
-def _ema(arr: np.ndarray, alpha: float) -> np.ndarray:
-    """EMA that skips NaNs (keeps them NaN) — alpha=1 disables smoothing."""
+def _ema(arr: np.ndarray, alpha: float, reset: np.ndarray | None = None) -> np.ndarray:
+    """EMA that skips NaNs (keeps them NaN) — alpha=1 disables smoothing. Resets at `reset` frames
+    (camera cuts) so a jump isn't smeared into a fake multi-frame motion."""
     if alpha >= 1.0:
         return arr
     out = arr.copy()
@@ -67,6 +69,10 @@ def _ema(arr: np.ndarray, alpha: float) -> np.ndarray:
     prev = out[0].copy()
     for i in range(1, F):
         cur = out[i]
+        if reset is not None and reset[i]:
+            out[i] = cur
+            prev = cur.copy()
+            continue
         m = ~np.isnan(cur) & ~np.isnan(prev)
         cur = np.where(m, alpha * cur + (1 - alpha) * prev, cur)
         out[i] = cur
@@ -95,12 +101,41 @@ def _drop_impossible_limbs(kp: np.ndarray, scale: np.ndarray, max_len: float = 1
     return out
 
 
+def detect_cuts(df: pd.DataFrame, F: int, diff_thresh: float = 28.0, jump_torso: float = 1.2) -> np.ndarray:
+    """Camera cuts: image changes a lot (frame_diff, when present) OR both fighters' hip centres jump
+    together by more than `jump_torso` torso-heights in a single frame."""
+    cuts = np.zeros(F, dtype=bool)
+    if "frame_diff" in df.columns:
+        fd = df.groupby("frame")["frame_diff"].first()
+        cuts[fd.index[fd.values > diff_thresh].to_numpy()] = True
+    hips = {}
+    for f in FIGHTERS:
+        sub = df[df["fighter"] == f].drop_duplicates("frame").set_index("frame")
+        hc = np.full((F, 2), np.nan)
+        if len(sub):
+            hc[sub.index.to_numpy()] = np.stack([
+                (sub["kp_l_hip_x"].to_numpy() + sub["kp_r_hip_x"].to_numpy()) / 2,
+                (sub["kp_l_hip_y"].to_numpy() + sub["kp_r_hip_y"].to_numpy()) / 2], axis=1)
+            tor = np.linalg.norm(
+                np.stack([(sub["kp_l_shoulder_x"] + sub["kp_r_shoulder_x"]) / 2 - (sub["kp_l_hip_x"] + sub["kp_r_hip_x"]) / 2,
+                          (sub["kp_l_shoulder_y"] + sub["kp_r_shoulder_y"]) / 2 - (sub["kp_l_hip_y"] + sub["kp_r_hip_y"]) / 2], axis=1), axis=1)
+            sc = np.nanmedian(tor) if np.isfinite(np.nanmedian(tor)) else 100.0
+        else:
+            sc = 100.0
+        jump = np.r_[0.0, np.linalg.norm(np.diff(hc, axis=0), axis=1)] / max(sc, 1e-3)
+        hips[f] = jump
+    both = (hips["red"] > jump_torso) & (hips["blue"] > jump_torso)
+    cuts |= np.nan_to_num(both, nan=False)
+    return cuts
+
+
 def build_series(df: pd.DataFrame, min_conf: float = 0.3, smooth_alpha: float = 0.6,
                  gap_limit: int = 5, max_len: float = 1.0) -> tuple[dict[str, FighterSeries], int]:
     """Returns ({fighter: FighterSeries}, n_frames). max_len scales LIMB_LIMITS (1.0 = defaults)."""
     if df.empty:
         raise ValueError("No tracks — did detection find any people?")
     F = int(df["frame"].max()) + 1
+    cuts = detect_cuts(df, F)
     out: dict[str, FighterSeries] = {}
     xcols = [f"kp_{n}_x" for n in KP_NAMES]
     ycols = [f"kp_{n}_y" for n in KP_NAMES]
@@ -141,6 +176,6 @@ def build_series(df: pd.DataFrame, min_conf: float = 0.3, smooth_alpha: float = 
         kp = _drop_impossible_limbs(kp, scale, max_len)
 
         kp = _interp_nan(kp, gap_limit)
-        kp = _ema(kp, smooth_alpha)
-        out[f] = FighterSeries(f, kp, conf, box, present, scale)
+        kp = _ema(kp, smooth_alpha, reset=cuts)
+        out[f] = FighterSeries(f, kp, conf, box, present, scale, cuts)
     return out, F

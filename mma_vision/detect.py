@@ -20,7 +20,7 @@ from .config import Config, pick_device
 from .identity import FighterAssigner, appearance, APP_COLS, APP_DIM
 
 log = logging.getLogger(__name__)
-TRACKS_SCHEMA = 2  # bump when columns change so stale caches are rebuilt
+TRACKS_SCHEMA = 3  # bump when columns change so stale caches are rebuilt
 
 
 def _load_model(cfg: Config):
@@ -78,11 +78,19 @@ def extract_tracks(video: str | Path, cfg: Config, cache: str | Path | None = No
         except ImportError:
             pass
 
+    prev_small = None
+    frame_diff = 0.0
     for fi, res in enumerate(stream):
         if max_frames and fi >= max_frames:
             break
         if bar:
             bar.update(1)
+        # Scene-change score: mean abs diff of a 32x18 grayscale thumbnail vs the previous frame (0-255).
+        # Cuts score 40+, normal motion < 10. Stored per row so analysis can ignore cut frames.
+        if res.orig_img is not None:
+            small = cv2.resize(cv2.cvtColor(res.orig_img, cv2.COLOR_BGR2GRAY), (32, 18), interpolation=cv2.INTER_AREA).astype(np.float32)
+            frame_diff = float(np.abs(small - prev_small).mean()) if prev_small is not None else 0.0
+            prev_small = small
         if res.boxes is None or len(res.boxes) == 0 or res.keypoints is None:
             continue
         boxes = res.boxes.xyxy.cpu().numpy()
@@ -98,6 +106,7 @@ def extract_tracks(video: str | Path, cfg: Config, cache: str | Path | None = No
                 "frame": fi, "t": fi / fps, "fighter": fighter, "track_id": int(ids[i]),
                 "x1": float(boxes[i, 0]), "y1": float(boxes[i, 1]),
                 "x2": float(boxes[i, 2]), "y2": float(boxes[i, 3]), "box_conf": float(confs[i]),
+                "frame_diff": frame_diff,
             }
             for k, name in enumerate(KP_NAMES):
                 row[f"kp_{name}_x"] = float(kxy[i, k, 0])
