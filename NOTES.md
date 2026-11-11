@@ -39,3 +39,12 @@ Cut a 19s clip of the round 2 finish for a post.
 - stat panel sits on top of the Paramount+ watermark. bumped opacity, added a top-right option.
 
 still to do before I trust the numbers: run a full round and compare to ufcstats.com.
+
+## 2026-11-10, later
+
+- re-cut of the old render still had the ref problem, and looking at it again I didn't trust the colour
+  histogram to separate Pereira's black shorts from the ref's black pants. added a blunt rule on top:
+  fighters are shirtless. fraction of the torso crop that isn't skin-hued. first try used brightness and
+  flagged Izzy at 0.90 in a backlit frame (median V=31, dark skin in shadow is just dark). hue works:
+  brown is dark red, black fabric under arena lights is blue-grey. ref 0.91-0.99, Izzy 0.10-0.15,
+  Pereira 0.32 because of the chest tattoos. threshold 0.7.

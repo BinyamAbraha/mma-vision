@@ -17,10 +17,10 @@ import pandas as pd
 
 from . import KP_NAMES
 from .config import Config, pick_device
-from .identity import FighterAssigner, appearance, APP_COLS, APP_DIM
+from .identity import FighterAssigner, appearance, shirt_score, APP_COLS, APP_DIM
 
 log = logging.getLogger(__name__)
-TRACKS_SCHEMA = 3  # bump when columns change so stale caches are rebuilt
+TRACKS_SCHEMA = 4  # bump when columns change so stale caches are rebuilt
 
 
 def _load_model(cfg: Config):
@@ -100,13 +100,14 @@ def extract_tracks(video: str | Path, cfg: Config, cache: str | Path | None = No
         kc = res.keypoints.conf.cpu().numpy() if res.keypoints.conf is not None else np.ones(kxy.shape[:2])
         img = res.orig_img
         feats = [appearance(img, boxes[i], kxy[i], kc[i]) if img is not None else None for i in range(len(boxes))]
+        shirts = [shirt_score(img, boxes[i], kxy[i], kc[i]) if img is not None else 0.0 for i in range(len(boxes))]
 
-        for fighter, i in assigner.assign(boxes, feats).items():
+        for fighter, i in assigner.assign(boxes, feats, shirts).items():
             row = {
                 "frame": fi, "t": fi / fps, "fighter": fighter, "track_id": int(ids[i]),
                 "x1": float(boxes[i, 0]), "y1": float(boxes[i, 1]),
                 "x2": float(boxes[i, 2]), "y2": float(boxes[i, 3]), "box_conf": float(confs[i]),
-                "frame_diff": frame_diff,
+                "frame_diff": frame_diff, "shirt": float(shirts[i]),
             }
             for k, name in enumerate(KP_NAMES):
                 row[f"kp_{name}_x"] = float(kxy[i, k, 0])

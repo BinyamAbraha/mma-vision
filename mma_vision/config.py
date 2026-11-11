@@ -33,6 +33,7 @@ class FighterCfg:
     swap_margin: float = 0.12           # cost margin required to flip red/blue vs. the position-favoured pairing
     sep_iou: float = 0.05               # boxes with IoU below this count as "separated" (safe to learn appearance)
     tmpl_rate: float = 0.03             # EMA rate for appearance templates
+    max_shirt: float = 0.7              # torso crop more than this fraction non-skin = wearing a shirt = not a fighter
     min_sim: float = 0.35               # appearance similarity below this = 'looks like neither fighter' (the ref)
     impostor_jump: float = 0.12         # ...and only counts as an impostor if also this far (frac of width) from where he was
     repair_identity: bool = True        # offline Viterbi pass that fixes swaps using the whole clip

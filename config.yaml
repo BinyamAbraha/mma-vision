@@ -22,6 +22,7 @@ fighters:
   swap_margin: 0.12               # how much better the swapped pairing must score before we flip red/blue
   sep_iou: 0.05                   # only learn a fighter's colours when the two boxes barely overlap
   tmpl_rate: 0.03
+  max_shirt: 0.7                  # torso crop more than this fraction non-skin = wearing a shirt = referee/corner, never a fighter
   min_sim: 0.35                   # below this appearance similarity a detection 'looks like neither fighter' (e.g. the referee)
   impostor_jump: 0.12             # ...and is dropped if it's also this far (fraction of frame width) from where the fighter was
   repair_identity: true           # offline pass: fix swaps using the whole clip's appearance evidence

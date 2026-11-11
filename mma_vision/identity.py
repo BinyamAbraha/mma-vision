@@ -74,6 +74,26 @@ def appearance(img_bgr: np.ndarray, box: np.ndarray, kxy: np.ndarray, kc: np.nda
     return np.concatenate([_hsv_hist(hsv, shorts), _hsv_hist(hsv, torso)])
 
 
+def shirt_score(img_bgr: np.ndarray, box: np.ndarray, kxy: np.ndarray, kc: np.ndarray) -> float:
+    """Fraction of the torso crop that is NOT skin. Fighters are shirtless, so this is low for them
+    (Pereira's chest tattoos push him to ~0.3); the referee in a black shirt is 0.9+.
+
+    Skin is detected by hue, not brightness: dark skin in shadow is still red/brown (H near 0/180 in
+    OpenCV's 0-180 scale) while black fabric under arena lights goes blue-grey or unsaturated.
+    Tested on a backlit frame where Adesanya's torso had median V=31 and still scored 0.15."""
+    hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+    x1, y1, x2, y2 = _region_rect(kxy, kc, ["l_shoulder", "r_shoulder", "l_hip", "r_hip"], box, (0.25, 0.2, 0.75, 0.5))
+    h, w = hsv.shape[:2]
+    x1, x2 = max(0, x1), min(w, x2)
+    y1, y2 = max(0, y1), min(h, y2)
+    if x2 - x1 < 3 or y2 - y1 < 3:
+        return 0.0
+    c = hsv[y1:y2, x1:x2]
+    H, S, V = c[..., 0], c[..., 1], c[..., 2]
+    skin = ((H <= 25) | (H >= 160)) & (S >= 35) & (V >= 20)
+    return float(1.0 - skin.mean())
+
+
 def similarity(a: np.ndarray, b: np.ndarray) -> float:
     """Histogram intersection averaged over the 4 sub-histograms -> [0,1]."""
     if a is None or b is None:
@@ -134,9 +154,16 @@ class FighterAssigner:
         app = 1.0 - similarity(feat, self.tmpl[f])
         return (1 - self.cfg.w_app) * pos + self.cfg.w_app * app
 
-    def assign(self, boxes: np.ndarray, feats: list[np.ndarray | None] | None = None) -> dict[str, int]:
+    def assign(self, boxes: np.ndarray, feats: list[np.ndarray | None] | None = None,
+               shirts: list[float] | None = None) -> dict[str, int]:
         if len(boxes) == 0:
             return {}
+        if shirts is not None:
+            keep = np.array([i for i in range(len(boxes)) if shirts[i] < self.cfg.max_shirt], dtype=int)
+            if len(keep) == 0:
+                return {}
+            sub = self.assign(boxes[keep], [feats[i] for i in keep] if feats is not None else None, None)
+            return {f: int(keep[i]) for f, i in sub.items()}
         top = self._pick_two(boxes)
         cents = np.stack([(boxes[top, 0] + boxes[top, 2]) / 2, (boxes[top, 1] + boxes[top, 3]) / 2], axis=1)
         feats = [None] * len(boxes) if feats is None else feats
@@ -200,7 +227,7 @@ class FighterAssigner:
 # ----------------------------------------------------------- offline repair --
 
 def fix_identity(df: pd.DataFrame, anchor_frames: int = 90, switch_penalty: float = 0.6,
-                 sep_iou: float = 0.05, min_sim: float = 0.35) -> tuple[pd.DataFrame, int]:
+                 sep_iou: float = 0.05, min_sim: float = 0.35, max_shirt: float = 0.7) -> tuple[pd.DataFrame, int]:
     """Globally consistent red/blue labelling via 2-state Viterbi over frames.
 
     State 0 = labels as stored, 1 = swapped. Emission = appearance agreement with templates
@@ -276,6 +303,13 @@ def fix_identity(df: pd.DataFrame, anchor_frames: int = 90, switch_penalty: floa
         m = df["frame"].isin(swapped)
         df.loc[m, "fighter"] = df.loc[m, "fighter"].map({"red": "blue", "blue": "red"})
 
+    if "shirt" in df.columns:
+        shirted = df["shirt"] > max_shirt
+        if shirted.any():
+            log.info("identity: dropped %d detections wearing a shirt (referee/corner)", int(shirted.sum()))
+            df = df[~shirted]
+            if df.empty:
+                return df, 0
     # Impostor rows: a detection that resembles NEITHER fighter (the referee, a cornerman, a cameraman)
     # got a fighter's label. Drop it - an empty slot beats a skeleton on the ref.
     feats = df[APP_COLS].to_numpy().astype(np.float32)
