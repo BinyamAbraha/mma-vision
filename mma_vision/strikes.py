@@ -172,6 +172,10 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
                 # to *that* zone decides landed vs. miss. Picking the nearest zone instead would call a
                 # jab to the chin a "body shot" because the chin sits right above the shoulders.
                 target = _zone(tip, B, imp, kind, scale[imp])
+                # ...except a glove/foot touching the head sphere is a head shot regardless of height
+                # (a crouched or falling opponent's shoulders sit at head height).
+                if "head" in dists and dists["head"] < cfg.land_dist:
+                    target = "head"
                 if target not in dists:
                     target = min(dists, key=dists.get)
                 dmin = dists[target]

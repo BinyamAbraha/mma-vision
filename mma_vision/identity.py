@@ -156,10 +156,14 @@ class FighterAssigner:
                 self.locked = True
             return out
 
-        # ---- one visible person: whichever fighter it looks/moves like
+        # ---- one visible person: whichever fighter it looks/moves like (unless it's neither)
         if len(top) == 1:
             c = {f: self._cost(cents[0], feats[top[0]], f) for f in FIGHTERS}
             f = min(c, key=c.get)
+            sim = similarity(feats[top[0]], self.tmpl[f])
+            jump = np.linalg.norm(cents[0] - self.prev[f]) / self.w
+            if self.tmpl[f] is not None and sim < self.cfg.min_sim and jump > self.cfg.impostor_jump:
+                return {}
             self.prev[f] = cents[0]
             return {f: int(top[0])}
 
@@ -178,6 +182,13 @@ class FighterAssigner:
 
         out = {}
         for f, i in zip(FIGHTERS, pair):
+            # Impostor check: when a fighter goes down, the referee becomes the 2nd-biggest person in
+            # frame. If this detection looks nothing like the fighter AND isn't where he just was,
+            # leave the slot empty rather than draw his skeleton on the ref.
+            sim = similarity(feats[top[i]], self.tmpl[f])
+            jump = np.linalg.norm(cents[i] - self.prev[f]) / self.w
+            if self.tmpl[f] is not None and sim < self.cfg.min_sim and jump > self.cfg.impostor_jump:
+                continue
             self.prev[f] = cents[i]
             out[f] = int(top[i])
             if separated and margin > self.cfg.swap_margin:
@@ -189,7 +200,7 @@ class FighterAssigner:
 # ----------------------------------------------------------- offline repair --
 
 def fix_identity(df: pd.DataFrame, anchor_frames: int = 90, switch_penalty: float = 0.6,
-                 sep_iou: float = 0.05) -> tuple[pd.DataFrame, int]:
+                 sep_iou: float = 0.05, min_sim: float = 0.35) -> tuple[pd.DataFrame, int]:
     """Globally consistent red/blue labelling via 2-state Viterbi over frames.
 
     State 0 = labels as stored, 1 = swapped. Emission = appearance agreement with templates
@@ -260,11 +271,29 @@ def fix_identity(df: pd.DataFrame, anchor_frames: int = 90, switch_penalty: floa
         states[i - 1] = back[i, states[i]]
 
     swapped = frames[states == 1]
+    df = df.copy()
     if len(swapped):
         m = df["frame"].isin(swapped)
-        df = df.copy()
         df.loc[m, "fighter"] = df.loc[m, "fighter"].map({"red": "blue", "blue": "red"})
-        # report the segments
+
+    # Impostor rows: a detection that resembles NEITHER fighter (the referee, a cornerman, a cameraman)
+    # got a fighter's label. Drop it — an empty slot beats a skeleton on the ref.
+    feats = df[APP_COLS].to_numpy().astype(np.float32)
+    sim_own = np.array([similarity(ft, T[f]) for ft, f in zip(feats, df["fighter"])])
+    sim_oth = np.array([similarity(ft, T["blue" if f == "red" else "red"]) for ft, f in zip(feats, df["fighter"])])
+    df["_imp"] = ((sim_own < min_sim) & (sim_oth < min_sim)).astype(int)
+    # ignore isolated single frames (one bad crop): need 2 of 3 consecutive frames, per fighter
+    df = df.sort_values(["fighter", "frame"])
+    run = df.groupby("fighter")["_imp"].transform(lambda x: x.rolling(3, center=True, min_periods=1).sum())
+    imp_rows = (run >= 2) & (df["_imp"] == 1)
+    n_imp = int(imp_rows.sum())
+    if n_imp:
+        log.info("identity: dropped %d detections that resemble neither fighter (referee/corner)", n_imp)
+        df = df[~imp_rows]
+    df = df.drop(columns="_imp").sort_values(["frame", "fighter"]).reset_index(drop=True)
+
+    if len(swapped):
+        # report the swap segments
         segs, start, prev = [], swapped[0], swapped[0]
         for fr in swapped[1:]:
             if fr != prev + 1:

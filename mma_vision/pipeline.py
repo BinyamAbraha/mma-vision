@@ -49,7 +49,7 @@ def analyze(tracks, cfg: Config, fps: float, w: int, h: int, out: Path):
 
     if cfg.fighters.repair_identity:
         tracks, n_fixed = fix_identity(tracks, switch_penalty=cfg.fighters.repair_switch_penalty,
-                                       sep_iou=cfg.fighters.sep_iou)
+                                       sep_iou=cfg.fighters.sep_iou, min_sim=cfg.fighters.min_sim)
         if n_fixed:
             log.info("identity repair swapped red/blue on %d frames", n_fixed)
     series, F = build_series(tracks, cfg.strikes.min_conf, cfg.strikes.smooth_alpha, max_len=cfg.strikes.max_limb_len)

@@ -69,3 +69,26 @@ def test_online_assigner_survives_collision():
             truth = {("red", "blue")[order[j]]: j for j in range(2)}
             wrong_after += int(out != truth)
     assert wrong_after == 0, f"{wrong_after} frames mislabelled after the collision"
+
+
+def test_offline_drops_referee_impostor():
+    """After a knockdown the 2nd-biggest person is the referee. Rows labelled 'blue' that resemble
+    neither fighter (black shirt: no hue, no saturation) and sit elsewhere must be dropped."""
+    df = _tracks()
+    bad = df.copy()
+    m = (bad.frame.between(500, 560)) & (bad.fighter == "blue")
+    n = int(m.sum())
+    assert n > 50
+    # referee signature: all weight in the lowest-saturation bins, flat hue
+    ref = np.zeros(len(APP_COLS), dtype=np.float32)
+    from mma_vision.identity import H_BINS, S_BINS, REGION_DIM
+    for base in (0, REGION_DIM):
+        ref[base:base + H_BINS] = 1.0 / H_BINS
+        ref[base + H_BINS] = 1.0                 # S bin 0 = unsaturated
+    bad.loc[m, APP_COLS] = np.tile(ref, (n, 1))
+    bad.loc[m, ["x1", "x2"]] += 400
+    fixed, _ = fix_identity(bad)
+    left = fixed[(fixed.frame.between(500, 560)) & (fixed.fighter == "blue")]
+    assert len(left) <= 3, f"{len(left)} referee rows survived"
+    # and nothing else was touched
+    assert len(fixed[~fixed.frame.between(500, 560)]) == len(df[~df.frame.between(500, 560)])

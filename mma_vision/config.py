@@ -33,6 +33,8 @@ class FighterCfg:
     swap_margin: float = 0.12           # cost margin required to flip red/blue vs. the position-favoured pairing
     sep_iou: float = 0.05               # boxes with IoU below this count as "separated" (safe to learn appearance)
     tmpl_rate: float = 0.03             # EMA rate for appearance templates
+    min_sim: float = 0.35               # appearance similarity below this = 'looks like neither fighter' (the ref)
+    impostor_jump: float = 0.12         # ...and only counts as an impostor if also this far (frac of width) from where he was
     repair_identity: bool = True        # offline Viterbi pass that fixes swaps using the whole clip
     repair_switch_penalty: float = 0.6  # higher = fewer, longer swap segments
 
@@ -83,6 +85,8 @@ class OverlayCfg:
     stat_panel: bool = True
     minimap: bool = True
     flash_frames: int = 12
+    panel_alpha: float = 0.82         # stat panel background opacity (broadcast watermarks sit under it)
+    panel_pos: str = "top-left"       # top-left | top-right
     font_scale: float = 0.55
     red_bgr: tuple = (60, 60, 230)
     blue_bgr: tuple = (230, 140, 50)

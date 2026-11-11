@@ -76,8 +76,9 @@ def draw_box(img, s: FighterSeries, fi: int, color, name: str):
 def draw_panel(img, cfg: Config, counts: dict, fi: int, t: float, fs_row: pd.Series, names: dict):
     h, w = img.shape[:2]
     pw, ph = 300, 118
-    x0, y0 = 16, 16
-    _alpha_rect(img, x0, y0, x0 + pw, y0 + ph, BLACK, 0.6)
+    x0 = w - pw - 16 if cfg.overlay.panel_pos == "top-right" else 16
+    y0 = 16
+    _alpha_rect(img, x0, y0, x0 + pw, y0 + ph, BLACK, cfg.overlay.panel_alpha)
     _text(img, "AI FIGHT TRACKER", (x0 + 10, y0 + 20), 0.5, GREY)
     mm, ss = divmod(int(t), 60)
     _text(img, f"{mm:02d}:{ss:02d}", (x0 + pw - 60, y0 + 20), 0.5, GREY)
