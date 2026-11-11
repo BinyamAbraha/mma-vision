@@ -5,7 +5,7 @@ then rules over the geometry to decide what was thrown, whether it landed, and w
 
 ![Adesanya vs Pereira 2, round 2](docs/demo.gif)
 
-Post-processed, not real-time. Runs on CPU, Apple Silicon (MPS) or CUDA. I develop it on an M4 Mac mini.
+Post-processed, not real-time. Runs on CPU, Apple Silicon (MPS) or CUDA. I developed it on an M4 Mac mini.
 **Work in progress** - see [known problems](#known-problems) before trusting any number it prints.
 
 ## What it does
