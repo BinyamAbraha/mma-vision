@@ -40,6 +40,7 @@ strikes:
   min_ext_punch: 0.5              # (torso) wrist-to-shoulder distance at impact — body shots and hooks are bent-arm
   min_ext_kick: 0.6               # (torso) ankle-to-hip distance at impact (kept low — kicks foreshorten in 2D)
   min_punch_travel: 0.35          # punch: wrist must have moved this far (torso) in the lookback window
+  min_reach: 0.3                  # (torso) tip must be forward of the striker's own shoulder toward the opponent. The opponent's glove on your face has zero reach.
   impact_window: 6                # frames after the speed peak to find impact (punch)
   impact_window_kick: 12          # kicks unfold slower (chamber -> extension)
   min_kick_travel: 0.5            # kick: ankle must have travelled this far (torso) in the lookback window

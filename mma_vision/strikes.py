@@ -168,6 +168,14 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
                 d_opp = np.nanmin([np.linalg.norm(tip - B.pt(j)[imp]) for j in opp_joints]) / scale[imp]
                 owner_ratio = float(d_own / d_opp) if not (np.isnan(d_own) or np.isnan(d_opp)) and d_opp > 0 else np.nan
 
+                # Reach: how far the tip sits from the striker's own anchor ALONG the line to the opponent.
+                # A glove that lands on the opponent's face is far forward of the striker's shoulder. The
+                # opponent's glove on *your* face, mis-attached to your skeleton, has ~zero reach.
+                anc = A.pt(anchor)[imp]
+                dir_opp = opp_center[imp] - anc
+                dn = np.linalg.norm(dir_opp)
+                reach = float((tip - anc) @ dir_opp / dn / scale[imp]) if dn > 1e-6 and not np.any(np.isnan(anc)) else np.nan
+
                 dists = _target_dists(tip, B, imp, kind, scale[imp])
                 if not dists:
                     continue
@@ -196,7 +204,7 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
                     "range": float(hip_dist[imp]) if not np.isnan(hip_dist[imp]) else np.nan,
                     "target": target, "speed": float(speed[p]), "cos": float(cos[p]), "ext": float(ext[imp]),
                     "ext_gain": gain, "travel": travel, "land_dist": float(dmin), "head_react": react,
-                    "owner_ratio": owner_ratio, "support": support, "body_react": body_react,
+                    "owner_ratio": owner_ratio, "support": support, "body_react": body_react, "reach": reach,
                     "near_cut": near_cut,
                 })
 
@@ -234,6 +242,9 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
         # Gate 0c: speed (with clinch multiplier)
         if c["speed"] < vthr:
             reject(c, "slow_clinch" if in_clinch else "slow"); continue
+        # Gate 0d: the tip must be forward of the striker's own shoulder/hip, toward the opponent
+        if not np.isnan(c["reach"]) and c["reach"] < cfg.min_reach * relax:
+            reject(c, "no_reach"); continue
         # Gate 1: limb actually extended at impact (kills guard twitches / feints). Hooks are bent.
         min_ext = (cfg.min_ext_punch if kind == "punch" else cfg.min_ext_kick) * relax
         if c["ext"] < min_ext:
@@ -272,7 +283,7 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
 
     detect_strikes.last_candidates = pd.DataFrame(verdicts).sort_values("frame").reset_index(drop=True) if verdicts else pd.DataFrame()
     cols = ["frame", "t", "fighter", "limb", "kind", "target", "landed", "speed", "land_dist", "head_react", "conf",
-            "ext", "ext_gain", "travel", "cos", "support", "body_react", "range", "in_combo", "in_clinch", "near_cut", "peak"]
+            "ext", "ext_gain", "travel", "cos", "support", "body_react", "reach", "range", "in_combo", "in_clinch", "near_cut", "peak"]
     ev = pd.DataFrame(events, columns=cols).sort_values("frame").reset_index(drop=True)
     return ev
 

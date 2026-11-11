@@ -54,6 +54,7 @@ class StrikeCfg:
     min_ext_kick: float = 0.6         # ankle at least this far (torso) from own hip at impact (low: 2D foreshortening)
     min_ext_gain: float = 0.25        # (diagnostic only now) retraction gain, kept in events.csv
     min_punch_travel: float = 0.35    # punch: wrist must have moved this far (torso) within the lookback window
+    min_reach: float = 0.3            # tip must sit this far (torso) forward of the striker's own shoulder/hip toward the opponent
     impact_window: int = 6            # frames after the speed peak to look for impact (punch)
     impact_window_kick: int = 12      # kicks unfold slower: chamber -> extension
     min_kick_travel: float = 0.5      # kick: ankle must have moved this far (torso) within the lookback window
