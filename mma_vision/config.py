@@ -70,7 +70,7 @@ class StrikeCfg:
     combo_relax: float = 0.6          # multiply extension/retraction gates by this inside a combo
     max_miss_dist: float = 0.9        # (torso) a punch miss further than this from the target is hand-fighting, not a strike
     max_miss_dist_kick: float = 1.4   # kicks that get checked/parried stop further out
-    min_peak_support: int = 1         # neighbouring frames (of 4) that must carry >= support_frac of peak speed — kills keypoint teleports
+    min_peak_support: int = 1         # neighbouring frames (of 4) that must carry >= support_frac of peak speed - kills keypoint teleports
     support_frac: float = 0.2         # a 3-frame real punch has neighbours at ~30%; a teleport at ~3%
     max_limb_len: float = 1.0         # multiplier on anatomical limb-length limits used to drop 'stolen' joints
     miss_speed_mult: float = 1.3      # a miss needs this x the speed threshold (landed shots don't)

@@ -1,4 +1,4 @@
-"""MMA Vision — fight footage analysis with pose estimation.
+"""MMA Vision - fight footage analysis with pose estimation.
 
 Pipeline: video -> (YOLO-pose + ByteTrack) -> fighter tracks -> strike events
 -> metrics -> annotated video (+ optional AI commentary).

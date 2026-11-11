@@ -57,7 +57,7 @@ def extract_tracks(video: str | Path, cfg: Config, cache: str | Path | None = No
             return cached
         why = (f"covers {have}/{want} frames" if not have >= want * 0.95 else
                f"was made with {cached.attrs.get('weights')}" if not same_weights else "predates the appearance features")
-        log.info("Cache %s — re-running inference", why)
+        log.info("Cache %s - re-running inference", why)
 
     device = pick_device(cfg.model.device)
     log.info("Device: %s | video %dx%d @ %.2f fps, %d frames", device, w, h, fps, n_total)

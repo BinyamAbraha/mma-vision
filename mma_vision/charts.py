@@ -1,4 +1,4 @@
-"""Static summary graphic (PNG) — the thing you post alongside the video."""
+"""Static summary graphic (PNG) - the thing you post alongside the video."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,7 +21,7 @@ def summary_card(events: pd.DataFrame, fs: pd.DataFrame, summary: dict, out_png:
     R, B = summary["fighters"]["red"], summary["fighters"]["blue"]
     cols = {"red": red_rgb, "blue": blue_rgb}
 
-    fig.suptitle(f"{R['name']}  vs  {B['name']}  —  AI strike analysis", fontsize=17, fontweight="bold", y=0.98)
+    fig.suptitle(f"{R['name']}  vs  {B['name']}  -  AI strike analysis", fontsize=17, fontweight="bold", y=0.98)
 
     # 1. totals
     ax = fig.add_subplot(gs[0, 0]); ax.set_facecolor(bg)

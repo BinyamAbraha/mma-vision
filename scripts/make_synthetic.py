@@ -62,7 +62,7 @@ SCRIPT = [
     (14.0, "blue", "r_ankle", "head", False),
     (15.5, "blue", "r_wrist", "head", True),
     (17.0, "red", "r_ankle", "leg", True),
-    # 1-2-3 combo: jab, cross, lead hook — 0.2s apart, same hand reused 0.45s later. Must count as 3.
+    # 1-2-3 combo: jab, cross, lead hook - 0.2s apart, same hand reused 0.45s later. Must count as 3.
     (20.0, "red", "l_wrist", "head", True),
     (20.2, "red", "r_wrist", "head", True),
     (20.45, "red", "l_wrist", "body", True),

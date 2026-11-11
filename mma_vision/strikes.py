@@ -21,6 +21,8 @@ from . import KP
 from .config import StrikeCfg
 from .tracks import FighterSeries
 
+# TODO: elbows and knees. Need the elbow/knee as the 'tip' with the shoulder/hip as anchor,
+# but close-range elbows barely move the keypoint - probably needs the learned classifier.
 LIMBS = {
     "l_wrist": ("l_shoulder", "punch"),
     "r_wrist": ("r_shoulder", "punch"),
@@ -69,6 +71,7 @@ def _target_dists(tip: np.ndarray, B: FighterSeries, fi: int, kind: str, scale: 
     return out
 
 
+# FIXME: zone thresholds assume an upright opponent. Breaks when someone is bent over or on the ground.
 def _zone(tip: np.ndarray, B: FighterSeries, fi: int, kind: str, scale: float) -> str:
     """head / body / leg by the tip's height relative to the opponent's shoulders and hips."""
     k = B.kp[fi]
@@ -107,7 +110,7 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
         scale = A.scale
         opp_center = B.torso_center
         _, opp_head_speed = _speed(B.head, B.scale)
-        # a head "reaction" faster than this is a keypoint jump, not a snap — ignore it
+        # a head "reaction" faster than this is a keypoint jump, not a snap - ignore it
         opp_head_speed = np.where(opp_head_speed > cfg.max_head_react, np.nan, opp_head_speed)
         hip_dist = np.linalg.norm(A.hip_center - B.hip_center, axis=1) / ((A.scale + B.scale) / 2)
         # opponent body displacement (torso/frame): a landed kick/teep shoves the hips back; a miss doesn't
@@ -216,7 +219,7 @@ def detect_strikes(series: dict[str, FighterSeries], fps: float, cfg: StrikeCfg)
         if in_clinch:
             vthr *= cfg.clinch_speed_mult      # in the pocket every twitch is "near the target"
 
-        # Gate -1: camera cut nearby — every joint jumped, nothing here is a strike
+        # Gate -1: camera cut nearby - every joint jumped, nothing here is a strike
         if c["near_cut"]:
             reject(c, "scene_cut"); continue
         # Gate 0: a real strike accelerates over several frames; a keypoint teleport is a one-frame spike.

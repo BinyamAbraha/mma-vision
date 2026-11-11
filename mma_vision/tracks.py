@@ -22,7 +22,7 @@ class FighterSeries:
     box: np.ndarray         # (F,4) xyxy, NaN where missing
     present: np.ndarray     # (F,) bool
     scale: np.ndarray       # (F,) torso height in px (rolling median, never NaN)
-    cuts: np.ndarray = None  # (F,) bool — True on frames where the camera cut (shared by both fighters)
+    cuts: np.ndarray = None  # (F,) bool - True on frames where the camera cut (shared by both fighters)
 
     def pt(self, name: str) -> np.ndarray:
         return self.kp[:, KP[name], :]
@@ -60,7 +60,7 @@ def _interp_nan(arr: np.ndarray, limit: int) -> np.ndarray:
 
 
 def _ema(arr: np.ndarray, alpha: float, reset: np.ndarray | None = None) -> np.ndarray:
-    """EMA that skips NaNs (keeps them NaN) — alpha=1 disables smoothing. Resets at `reset` frames
+    """EMA that skips NaNs (keeps them NaN) - alpha=1 disables smoothing. Resets at `reset` frames
     (camera cuts) so a jump isn't smeared into a fake multi-frame motion."""
     if alpha >= 1.0:
         return arr
@@ -133,7 +133,7 @@ def build_series(df: pd.DataFrame, min_conf: float = 0.3, smooth_alpha: float = 
                  gap_limit: int = 5, max_len: float = 1.0) -> tuple[dict[str, FighterSeries], int]:
     """Returns ({fighter: FighterSeries}, n_frames). max_len scales LIMB_LIMITS (1.0 = defaults)."""
     if df.empty:
-        raise ValueError("No tracks — did detection find any people?")
+        raise ValueError("No tracks - did detection find any people?")
     F = int(df["frame"].max()) + 1
     cuts = detect_cuts(df, F)
     out: dict[str, FighterSeries] = {}
@@ -165,12 +165,12 @@ def build_series(df: pd.DataFrame, min_conf: float = 0.3, smooth_alpha: float = 
         s = pd.Series(torso).rolling(45, min_periods=5, center=True).median()
         s = s.bfill().ffill()
         if s.isna().all():
-            # No torso visible anywhere — fall back to box height * 0.35
+            # No torso visible anywhere - fall back to box height * 0.35
             bh = pd.Series(box[:, 3] - box[:, 1]).bfill().ffill()
             s = (bh * 0.35).fillna(100.0)
         scale = np.maximum(s.to_numpy(), 1e-3)
 
-        # Anatomy check: when two bodies overlap, pose models "steal" limbs — one fighter's wrist gets
+        # Anatomy check: when two bodies overlap, pose models "steal" limbs - one fighter's wrist gets
         # attached to the other's skeleton. A 2D projection can only SHORTEN a limb, so any segment
         # longer than its real length (in torso units) is impossible. Drop those joints.
         kp = _drop_impossible_limbs(kp, scale, max_len)

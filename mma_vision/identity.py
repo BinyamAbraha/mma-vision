@@ -1,6 +1,6 @@
 """Fighter identity: appearance features + online assignment + offline swap repair.
 
-Position alone can't keep red/blue straight when the fighters collide — at the
+Position alone can't keep red/blue straight when the fighters collide - at the
 moment of overlap "nearest previous centroid" is a coin flip. So we also build a
 colour signature per fighter (shorts + torso HSV histograms), use it in the
 per-frame assignment, and then run an offline pass over the whole clip that finds
@@ -20,7 +20,7 @@ from . import KP, FIGHTERS
 
 log = logging.getLogger(__name__)
 
-H_BINS, S_BINS = 16, 8
+H_BINS, S_BINS = 16, 8  # TODO: try LAB instead of HSV, skin tones under arena lighting drift a lot
 REGION_DIM = H_BINS + S_BINS
 APP_DIM = 2 * REGION_DIM
 APP_COLS = [f"app_{i}" for i in range(APP_DIM)]
@@ -235,11 +235,11 @@ def fix_identity(df: pd.DataFrame, anchor_frames: int = 90, switch_penalty: floa
             for f in FIGHTERS:
                 tm[f].append(ft[f])
     if min(len(v) for v in tm.values()) < 5:
-        log.warning("identity: not enough separated anchor frames to build templates — skipping repair")
+        log.warning("identity: not enough separated anchor frames to build templates - skipping repair")
         return df, 0
     T = {f: np.mean(v, axis=0) for f, v in tm.items()}
     if similarity(T["red"], T["blue"]) > 0.9:
-        log.warning("identity: fighters look alike (sim %.2f) — appearance repair may be unreliable",
+        log.warning("identity: fighters look alike (sim %.2f) - appearance repair may be unreliable",
                     similarity(T["red"], T["blue"]))
 
     # Emissions: score for keep vs swap
@@ -277,7 +277,7 @@ def fix_identity(df: pd.DataFrame, anchor_frames: int = 90, switch_penalty: floa
         df.loc[m, "fighter"] = df.loc[m, "fighter"].map({"red": "blue", "blue": "red"})
 
     # Impostor rows: a detection that resembles NEITHER fighter (the referee, a cornerman, a cameraman)
-    # got a fighter's label. Drop it — an empty slot beats a skeleton on the ref.
+    # got a fighter's label. Drop it - an empty slot beats a skeleton on the ref.
     feats = df[APP_COLS].to_numpy().astype(np.float32)
     sim_own = np.array([similarity(ft, T[f]) for ft, f in zip(feats, df["fighter"])])
     sim_oth = np.array([similarity(ft, T["blue" if f == "red" else "red"]) for ft, f in zip(feats, df["fighter"])])
@@ -301,5 +301,5 @@ def fix_identity(df: pd.DataFrame, anchor_frames: int = 90, switch_penalty: floa
             prev = fr
         segs.append((start, prev))
         log.info("identity: repaired %d swapped frames in %d segment(s): %s", len(swapped), len(segs),
-                 ", ".join(f"{a}-{b}" for a, b in segs[:8]) + (" …" if len(segs) > 8 else ""))
+                 ", ".join(f"{a}-{b}" for a, b in segs[:8]) + (" ..." if len(segs) > 8 else ""))
     return df, int(len(swapped))

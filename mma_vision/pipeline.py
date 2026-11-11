@@ -7,7 +7,7 @@
     python -m mma_vision.pipeline analyze outputs/fight/tracks.parquet     # re-run strikes+metrics from cache
 
 Outputs land in outputs/<clip-name>/:
-  tracks.parquet   raw per-frame keypoints (cached — inference never re-runs)
+  tracks.parquet   raw per-frame keypoints (cached - inference never re-runs)
   events.csv       strike events
   frames.csv       per-frame metrics (distance, guard, position)
   summary.json     fight summary

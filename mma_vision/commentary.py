@@ -1,8 +1,8 @@
 """Stage 5 (optional): events -> timed commentary lines -> TTS -> muxed onto the video.
 
 Two text providers:
-  template — free, offline, deterministic. Good enough for a demo.
-  claude   — sends the event log to Claude for broadcast-style colour commentary
+  template - free, offline, deterministic. Good enough for a demo.
+  claude   - sends the event log to Claude for broadcast-style colour commentary
              (needs ANTHROPIC_API_KEY; a whole fight costs well under $1).
 
 TTS providers: none | elevenlabs (ELEVENLABS_API_KEY) | kokoro (local, free).
@@ -45,7 +45,7 @@ def _pick_moments(events: pd.DataFrame, every_sec: float, duration: float) -> li
 def template_commentary(events: pd.DataFrame, summary: dict, cfg: CommentaryCfg) -> list[dict]:
     names = {f: summary["fighters"][f]["name"].title() for f in summary["fighters"]}
     lines = [{"t": 0.5, "text": f"{names['red']} in the red corner, {names['blue']} in blue. Here we go."}]
-    land = ["{n} lands a clean {w}!", "Big {w} from {n}, that one connected.", "{n} with the {w} — right on the money.",
+    land = ["{n} lands a clean {w}!", "Big {w} from {n}, that one connected.", "{n} with the {w} - right on the money.",
             "Oh! {n} finds a home for that {w}.", "{w} lands for {n}."]
     miss = ["{n} throws the {w}, just misses.", "{n} looking for the {w}, nothing there.", "{w} from {n} comes up short."]
     for e in _pick_moments(events, cfg.every_sec, summary["duration_sec"]):
@@ -153,7 +153,7 @@ def mux(video_in: Path, lines: list[dict], cfg: CommentaryCfg, workdir: Path, vi
            "-map", "0:v", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac", "-shortest", str(video_out)]
     r = subprocess.run(cmd)
     if r.returncode != 0:
-        # video may have no audio stream — retry without the original track
+        # video may have no audio stream - retry without the original track
         fc = ";".join(filters + [f"{mix_in}amix=inputs={idx - 1}:normalize=0[aout]"])
         cmd[cmd.index("-filter_complex") + 1] = fc
         r = subprocess.run(cmd)

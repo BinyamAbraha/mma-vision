@@ -99,6 +99,7 @@ def draw_panel(img, cfg: Config, counts: dict, fi: int, t: float, fs_row: pd.Ser
     _text(img, rng_txt, (x0 + 10, y0 + ph - 8), 0.42, GREY)
 
 
+# the minimap is image-x / image-y, not a real top-down view. good enough for a demo, wrong for analysis.
 def draw_minimap(img, cfg: Config, trails: dict[str, deque], frame_w: int, frame_h: int):
     h, w = img.shape[:2]
     mw, mh = 170, 110

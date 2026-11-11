@@ -1,4 +1,4 @@
-"""End-to-end test on the synthetic fight — no ML deps needed.
+"""End-to-end test on the synthetic fight - no ML deps needed.
 
     python -m pytest tests/ -q
 """
@@ -45,7 +45,7 @@ def test_cli_help():
 
 def test_keypoint_teleport_is_not_a_strike():
     """A wrist keypoint that jumps onto the opponent's glove for a few frames (pose model 'stealing'
-    a limb) must not be credited as a punch — even though it's fast, toward the opponent and extended."""
+    a limb) must not be credited as a punch - even though it's fast, toward the opponent and extended."""
     import numpy as np
     from mma_vision.config import Config
     from mma_vision.detect import read_tracks

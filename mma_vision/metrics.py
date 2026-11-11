@@ -20,7 +20,7 @@ def frame_series(series: dict[str, FighterSeries], fps: float, frame_w: int, fra
 
     dist = np.linalg.norm(red.hip_center - blue.hip_center, axis=1) / mean_scale
     out = {"frame": np.arange(F), "t": np.arange(F) / fps, "distance": dist}
-    center = np.array([frame_w / 2, frame_h * 0.6])  # rough cage centre in image space
+    center = np.array([frame_w / 2, frame_h * 0.6])  # rough cage centre in image space. TODO: homography from the cage floor lines
     for f in FIGHTERS:
         s = series[f]
         wrists = np.nanmean(np.stack([s.pt("l_wrist"), s.pt("r_wrist")]), axis=0)
@@ -88,7 +88,7 @@ def _trend(x: np.ndarray) -> float:
 
 
 def running_counts(events: pd.DataFrame, F: int) -> dict[str, np.ndarray]:
-    """Cumulative thrown/landed per frame — what the overlay panel displays."""
+    """Cumulative thrown/landed per frame - what the overlay panel displays."""
     out = {}
     for f in FIGHTERS:
         ev = events[events["fighter"] == f]
