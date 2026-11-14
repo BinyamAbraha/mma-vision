@@ -86,7 +86,11 @@ def knockdowns(series: dict[str, FighterSeries], fps: float, cfg: StateCfg = Sta
             if np.isnan(drop) or drop < cfg.kd_drop:
                 continue
             stay = ang[i:i + cfg.kd_stay_frames]
-            if len(stay) < cfg.kd_stay_frames or np.nanmean(stay) < cfg.ground_angle:
+            if len(stay) < cfg.kd_stay_frames or np.nanmean(stay) < cfg.kd_angle:
+                continue
+            # must have been upright shortly before (so a fighter already on the ground can't re-trigger)
+            before = ang[max(0, i - 45):max(0, i - cfg.kd_window)]
+            if before.size and not np.all(np.isnan(before)) and np.nanmedian(before) > cfg.kd_angle:
                 continue
             rows.append({"frame": i, "t": i / fps, "fighter": f, "drop": float(drop),
                          "torso_angle": float(np.nanmean(stay))})

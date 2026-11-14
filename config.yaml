@@ -71,7 +71,7 @@ overlay:
   stat_panel: true
   minimap: true
   flash_frames: 12
-  kinematics: false               # draw joint angles + limb speeds on the skeleton (or pass --kinematics)
+  kinematics: true                # draw joint angles + limb speeds on the skeleton (set false for a cleaner look)
   state_bar: true                 # standing / clinch / ground timeline under the stat panel
   stance_label: true              # ORTHODOX / SOUTHPAW under each fighter's name
   knockdown_banner: true
@@ -81,10 +81,12 @@ overlay:
 states:
   clinch_dist: 0.9                # (torso, hip-to-hip) closer than this with overlapping boxes = clinch
   ground_angle: 50                # torso this many degrees off vertical = on the ground
-  kd_drop: 0.8                    # knockdown: hips drop this many torso-heights within kd_window frames and stay down
-  kd_window: 15
-  stance_min_sep: 0.25            # feet must be this far apart toward the opponent to call orthodox/southpaw
-  stance_min_frames: 10           # a stance switch must hold this long to count
+  kd_drop: 0.5                    # knockdown: hips drop this many torso-heights within kd_window frames...
+  kd_window: 20
+  kd_angle: 35                    # ...and the torso tilts at least this far off vertical for kd_stay_frames
+  kd_stay_frames: 12
+  stance_min_sep: 0.3             # feet must be this far apart toward the opponent to call orthodox/southpaw
+  stance_min_frames: 20           # a stance switch must hold this long to count (pivots read as switches at 10)
 
 commentary:
   enabled: false                  # or pass --commentary

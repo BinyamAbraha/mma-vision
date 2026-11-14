@@ -87,12 +87,14 @@ class StateCfg:
     clinch_min_frames: int = 6
     ground_angle: float = 50.0      # torso more than this far from vertical (degrees) = on the ground
     ground_min_frames: int = 8
-    kd_drop: float = 0.8            # knockdown: hips drop this many torso-heights...
-    kd_window: int = 15             # ...within this many frames
-    kd_stay_frames: int = 10        # ...and the torso stays horizontal this long
+    kd_drop: float = 0.5            # knockdown: hips drop this many torso-heights...
+    kd_window: int = 20             # ...within this many frames (2/3 s)
+    kd_angle: float = 35.0          # ...and the torso tilts at least this far off vertical (a fall toward the
+                                    #    camera never looks horizontal; 50 missed a real KO at 49)
+    kd_stay_frames: int = 12        # ...held for this long
     kd_cooldown: int = 90
-    stance_min_sep: float = 0.25    # feet must be this far apart (torso) along the opponent axis to call a stance
-    stance_min_frames: int = 10     # a new stance must hold this long before it counts as a switch
+    stance_min_sep: float = 0.3     # feet must be this far apart (torso) along the opponent axis to call a stance
+    stance_min_frames: int = 20     # a new stance must hold this long before it counts as a switch
 
 
 @dataclass
