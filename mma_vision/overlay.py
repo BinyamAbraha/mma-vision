@@ -143,9 +143,41 @@ def draw_kinematics(img, s: FighterSeries, fi: int, color, krow):
         _text(img, f"{bv:.1f} t/s", (p[0] + 12, p[1] - 10), 0.45, color, 1)
 
 
+STATE_COL = {"standing": (120, 200, 120), "clinch": (60, 180, 230), "ground": (70, 70, 220)}
+
+
+def draw_state_bar(img, cfg: Config, state_arr: np.ndarray, fi: int, F: int):
+    """Timeline of standing / clinch / ground under the stat panel with a playhead."""
+    w = img.shape[1]
+    pw, bh = 300, 10
+    x0 = w - pw - 16 if cfg.overlay.panel_pos == "top-right" else 16
+    y0 = 16 + 118 + 6
+    _alpha_rect(img, x0, y0 - 2, x0 + pw, y0 + bh + 14, BLACK, cfg.overlay.panel_alpha)
+    # downsample the state array to pw columns
+    idx = (np.arange(pw) * F / pw).astype(int)
+    for x, i in enumerate(idx):
+        col = STATE_COL.get(str(state_arr[min(i, F - 1)]), GREY)
+        cv2.line(img, (x0 + x, y0), (x0 + x, y0 + bh), col, 1)
+    px = x0 + int(fi * pw / max(1, F))
+    cv2.line(img, (px, y0 - 2), (px, y0 + bh + 2), WHITE, 2)
+    cur = str(state_arr[min(fi, F - 1)]).upper()
+    _text(img, cur, (x0 + 2, y0 + bh + 11), 0.38, STATE_COL.get(cur.lower(), GREY))
+
+
+def draw_knockdown(img, fighter_name: str, color, age: float):
+    """Big centred banner for ~1.5s after a knockdown."""
+    h, w = img.shape[:2]
+    txt = f"KNOCKDOWN  {fighter_name}"
+    (tw, th), _ = cv2.getTextSize(txt, cv2.FONT_HERSHEY_DUPLEX, 1.4, 3)
+    x, y = (w - tw) // 2, int(h * 0.22)
+    _alpha_rect(img, x - 24, y - th - 18, x + tw + 24, y + 16, BLACK, 0.7 * (1 - age * 0.5))
+    cv2.putText(img, txt, (x, y), cv2.FONT_HERSHEY_DUPLEX, 1.4, color, 3, cv2.LINE_AA)
+
+
 def render(video: str | Path, series: dict[str, FighterSeries], events: pd.DataFrame, fs: pd.DataFrame,
            cfg: Config, out_path: str | Path, max_frames: int | None = None, progress: bool = True,
-           kinematics: pd.DataFrame | None = None) -> Path:
+           kinematics: pd.DataFrame | None = None, states: pd.DataFrame | None = None,
+           knockdowns: pd.DataFrame | None = None, stance: pd.DataFrame | None = None) -> Path:
     cap = cv2.VideoCapture(str(video))
     if not cap.isOpened():
         raise FileNotFoundError(video)
@@ -167,6 +199,11 @@ def render(video: str | Path, series: dict[str, FighterSeries], events: pd.DataF
     kin_idx = None
     if kinematics is not None and len(kinematics):
         kin_idx = {f: g.set_index("frame") for f, g in kinematics.groupby("fighter")}
+    state_arr = states.set_index("frame")["state"].reindex(range(F)).ffill().bfill().to_numpy() if states is not None and len(states) else None
+    stance_arr = {f: g.set_index("frame")["stance"].reindex(range(F)).ffill().to_numpy()
+                  for f, g in stance.groupby("fighter")} if stance is not None and len(stance) else {}
+    kd_list = [(int(r.frame), r.fighter) for r in knockdowns.itertuples()] if knockdowns is not None and len(knockdowns) else []
+    kd_hold = int(fps * 1.5)
 
     bar = None
     if progress:
@@ -191,6 +228,11 @@ def render(video: str | Path, series: dict[str, FighterSeries], events: pd.DataF
                 draw_skeleton(frame, s, fi, col)
             if cfg.overlay.draw_boxes:
                 draw_box(frame, s, fi, col, names[f])
+                if cfg.overlay.stance_label and f in stance_arr:
+                    st_ = str(stance_arr[f][fi])
+                    b = s.box[fi]
+                    if st_ in ("orthodox", "southpaw") and _ok(b):
+                        _text(frame, st_.upper(), (int(b[0]) + 5, int(b[3]) + 16), 0.4, col, 1)
             if kin_idx is not None and f in kin_idx and fi in kin_idx[f].index:
                 draw_kinematics(frame, s, fi, col, kin_idx[f].loc[fi])
 
@@ -212,6 +254,12 @@ def render(video: str | Path, series: dict[str, FighterSeries], events: pd.DataF
 
         if cfg.overlay.stat_panel:
             draw_panel(frame, cfg, counts, fi, fi / fps, fs.iloc[fi], names)
+            if cfg.overlay.state_bar and state_arr is not None:
+                draw_state_bar(frame, cfg, state_arr, fi, F)
+        if cfg.overlay.knockdown_banner:
+            for kf, kfighter in kd_list:
+                if 0 <= fi - kf < kd_hold:
+                    draw_knockdown(frame, names[kfighter], _color(cfg, kfighter), (fi - kf) / kd_hold)
         if cfg.overlay.minimap:
             draw_minimap(frame, cfg, trails, w, h)
 

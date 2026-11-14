@@ -81,6 +81,21 @@ class StrikeCfg:
 
 
 @dataclass
+class StateCfg:
+    clinch_dist: float = 0.9        # hip-to-hip (torso) below this AND boxes overlapping = clinch
+    clinch_iou: float = 0.15
+    clinch_min_frames: int = 6
+    ground_angle: float = 50.0      # torso more than this far from vertical (degrees) = on the ground
+    ground_min_frames: int = 8
+    kd_drop: float = 0.8            # knockdown: hips drop this many torso-heights...
+    kd_window: int = 15             # ...within this many frames
+    kd_stay_frames: int = 10        # ...and the torso stays horizontal this long
+    kd_cooldown: int = 90
+    stance_min_sep: float = 0.25    # feet must be this far apart (torso) along the opponent axis to call a stance
+    stance_min_frames: int = 10     # a new stance must hold this long before it counts as a switch
+
+
+@dataclass
 class OverlayCfg:
     draw_skeleton: bool = True
     draw_boxes: bool = True
@@ -88,6 +103,9 @@ class OverlayCfg:
     minimap: bool = True
     flash_frames: int = 12
     kinematics: bool = False          # draw elbow/knee angles and wrist/ankle speeds on the skeleton
+    state_bar: bool = True            # standing / clinch / ground timeline under the stat panel
+    stance_label: bool = True         # ORTHODOX / SOUTHPAW under the fighter name
+    knockdown_banner: bool = True
     panel_alpha: float = 0.82         # stat panel background opacity (broadcast watermarks sit under it)
     panel_pos: str = "top-left"       # top-left | top-right
     font_scale: float = 0.55
@@ -112,6 +130,7 @@ class Config:
     fighters: FighterCfg = field(default_factory=FighterCfg)
     strikes: StrikeCfg = field(default_factory=StrikeCfg)
     overlay: OverlayCfg = field(default_factory=OverlayCfg)
+    states: StateCfg = field(default_factory=StateCfg)
     commentary: CommentaryCfg = field(default_factory=CommentaryCfg)
     fps_override: float | None = None
     round_length_sec: float = 300.0

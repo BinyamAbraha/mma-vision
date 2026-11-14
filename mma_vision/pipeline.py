@@ -11,6 +11,8 @@ Outputs land in outputs/<clip-name>/:
   events.csv       strike events
   frames.csv       per-frame metrics (distance, guard, position)
   kinematics.csv   per-frame joint angles, limb speeds/accelerations, trunk lean (image-plane 2D)
+  states.csv       per-frame fight state: standing / clinch / ground
+  knockdowns.csv   knockdown events;  stance.csv / stance_switches.csv  orthodox-southpaw per frame + switches
   summary.json     fight summary
   summary.png      shareable stat card
   annotated.mp4    the overlay video
@@ -48,6 +50,7 @@ def analyze(tracks, cfg: Config, fps: float, w: int, h: int, out: Path):
     from .charts import summary_card
     from .identity import fix_identity
     from . import kinematics as kin
+    from . import states as fst
 
     if cfg.fighters.repair_identity:
         tracks, n_fixed = fix_identity(tracks, switch_penalty=cfg.fighters.repair_switch_penalty,
@@ -57,6 +60,19 @@ def analyze(tracks, cfg: Config, fps: float, w: int, h: int, out: Path):
             log.info("identity repair swapped red/blue on %d frames", n_fixed)
     series, F = build_series(tracks, cfg.strikes.min_conf, cfg.strikes.smooth_alpha, max_len=cfg.strikes.max_limb_len)
     events = detect_strikes(series, fps, cfg.strikes)
+
+    # fight state / knockdowns / stance. Strikes thrown while someone is on the ground are kept in the
+    # file with ground=True but excluded from counts: the pose model is unreliable on a horizontal body.
+    states = fst.fight_state(series, cfg.states)
+    kds = fst.knockdowns(series, fps, cfg.states)
+    st = fst.stance(series, cfg.states)
+    switches = fst.stance_switches(st, fps)
+    ground_frames = set(states.loc[states.state == "ground", "frame"])
+    events["ground"] = events["frame"].isin(ground_frames)
+    n_ground = int(events["ground"].sum())
+    events = events[~events["ground"]].reset_index(drop=True)
+    if n_ground:
+        log.info("%d strikes during ground state excluded from counts", n_ground)
     fs = frame_series(series, fps, w, h)
     names = {"red": cfg.red_name, "blue": cfg.blue_name}
     summary = summarize(events, fs, fps, cfg.round_length_sec, names)
@@ -65,9 +81,23 @@ def analyze(tracks, cfg: Config, fps: float, w: int, h: int, out: Path):
     events = kin.at_events(kinem, events)
     for f, v in kin.summarize(kinem).items():
         summary["fighters"][f]["kinematics"] = v
+    ssum = fst.summarize(states, kds, st, switches, fps)
+    summary["time_in_state"] = ssum["time_in_state"]
+    summary["knockdowns"] = ssum["knockdowns"]
+    for f, v in ssum["fighters"].items():
+        summary["fighters"][f].update(v)
 
     out.mkdir(parents=True, exist_ok=True)
     kinem.round(3).to_csv(out / "kinematics.csv", index=False)
+    states.round(3).to_csv(out / "states.csv", index=False)
+    kds.round(3).to_csv(out / "knockdowns.csv", index=False)
+    st.round(3).to_csv(out / "stance.csv", index=False)
+    switches.round(3).to_csv(out / "stance_switches.csv", index=False)
+    if len(kds):
+        log.info("knockdowns: %s", ", ".join(f"{r.fighter} down at {r.t:.1f}s" for r in kds.itertuples()))
+    log.info("stance switches: red %d, blue %d | time in state %s",
+             int((switches.fighter == "red").sum()), int((switches.fighter == "blue").sum()),
+             {k: f"{v:.0%}" for k, v in ssum["time_in_state"].items()})
     events.to_csv(out / "events.csv", index=False)
     cands = getattr(detect_strikes, "last_candidates", None)
     if cands is not None and len(cands):
@@ -107,7 +137,7 @@ def cmd_run(a):
     if not a.no_render:
         t0 = time.time()
         vid = render(video, series, events, fs, cfg, out / "annotated.mp4", max_frames=a.max_frames,
-                     kinematics=_kin_for_overlay(cfg, out))
+                     kinematics=_kin_for_overlay(cfg, out), **_state_for_overlay(out))
         log.info("rendered %s in %.1fs", vid, time.time() - t0)
         if cfg.commentary.enabled:
             lines = cm.generate(events, summary, cfg.commentary, out / "commentary.json")
@@ -129,7 +159,7 @@ def cmd_rerender(a):
     tracks = read_tracks(out / "tracks.parquet")
     series, events, fs, _ = analyze(tracks, cfg, fps, w, h, out)
     render(video, series, events, fs, cfg, out / "annotated.mp4", max_frames=a.max_frames,
-           kinematics=_kin_for_overlay(cfg, out))
+           kinematics=_kin_for_overlay(cfg, out), **_state_for_overlay(out))
     print(f"\nRe-rendered -> {out / 'annotated.mp4'}")
 
 
@@ -150,6 +180,15 @@ def _kin_for_overlay(cfg: Config, out: Path):
     import pandas as pd
     p = out / "kinematics.csv"
     return pd.read_csv(p) if p.exists() else None
+
+
+def _state_for_overlay(out: Path):
+    import pandas as pd
+    r = {}
+    for k in ("states", "knockdowns", "stance"):
+        p = out / f"{k}.csv"
+        r[k] = pd.read_csv(p) if p.exists() else None
+    return r
 
 
 def _cfg_from_args(a) -> Config:

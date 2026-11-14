@@ -56,3 +56,7 @@ still to do before I trust the numbers: run a full round and compare to ufcstats
   accelerations, hip speed, trunk lean. events get peak tip speed + joint angle at impact. --kinematics
   draws it on the skeleton. synthetic sanity: elbows 40-60 in guard, ~157 at punch impact, knees ~170
   standing, ~140 mid kick. all 2D, said so in the README twice.
+- knockdown detection, standing/clinch/ground state, stance + switches. all geometry on the cached keypoints.
+  ground strikes are now excluded from counts instead of being wrong (closes #4). stance is relative to the
+  opponent in image space, so it's only trustworthy side-on. synthetic tests inject a clinch, a knockdown and
+  an ankle swap; all four pass. still want to see it on the Izzy clip.

@@ -19,6 +19,8 @@ video -> YOLO26-pose + ByteTrack -> fighter keypoints -> strike detector -> metr
 - finds both fighters and keeps red/blue identity through clinches and camera cuts
 - detects punches and kicks, calls them landed / missed, head / body / leg
 - per-fighter output, accuracy, pace, range (clinch / punch / kick), cage control, guard height
+- fight state (standing / clinch / ground), knockdowns, stance and stance switches
+- joint angles and limb speeds per frame (image-plane 2D)
 - renders a broadcast-style overlay (skeletons, strike flashes, live stat panel, cage minimap)
 - optional commentary track written by an LLM from the event log and voiced with TTS
 
@@ -53,6 +55,8 @@ Outputs land in `outputs/<clip>/`:
 | `candidates.csv` | every candidate motion, accepted or not, with `rejected_by`. Look here first when a strike is missed |
 | `frames.csv` | per-frame distance, range, guard height, position |
 | `kinematics.csv` | per-frame joint angles (elbow, knee, hip), angular velocities, wrist/ankle speed and acceleration, hip speed, trunk lean |
+| `states.csv` | per-frame fight state: standing / clinch / ground |
+| `knockdowns.csv`, `stance.csv`, `stance_switches.csv` | knockdown events; orthodox / southpaw per frame and the switches |
 | `tracks.parquet` | raw keypoints. Cached, so inference never re-runs unless the model or frame count changes |
 
 Inference is the only slow step and it's cached. Change anything in `config.yaml` and
@@ -88,6 +92,19 @@ It's image-plane 2D from one broadcast camera. Angles are projected angles and s
 per second, not metres. A limb pointing at the lens foreshortens, so an elbow aimed at the camera reads as
 bent regardless. Useful as a consistent relative signal across a fight; not a measurement.
 
+## Fight state, knockdowns, stance
+
+- **State** per frame: clinch when the hips are within 0.9 torso-heights and the boxes overlap for more than a
+  few frames; ground when either torso is more than 50 degrees off vertical. Strikes thrown during ground state
+  are kept in `events.csv` with `ground=True` but left out of the counts, because the pose model is unreliable
+  on a horizontal body. A standing / clinch / ground timeline is drawn under the stat panel.
+- **Knockdowns**: a fighter's hips drop more than 0.8 torso-heights inside half a second, the torso goes
+  horizontal and stays there. Camera cuts are masked. Shows a banner on the overlay for 1.5 seconds.
+- **Stance**: defined relative to the opponent in image space. Lead foot is the one nearer the opponent along the
+  hip-to-hip axis; left lead = orthodox. Needs the feet at least 0.25 torso apart along that axis and a new stance
+  to hold for 10 frames before it counts as a switch. Accurate when the camera sees the fighters side-on, which
+  is most broadcast angles; unreliable when the camera is behind one of them.
+
 ## Who is who
 
 Position can't keep red/blue straight when fighters collide, so each detection also gets a colour signature
@@ -102,7 +119,6 @@ Found by watching the output on real footage. Each one that's been fixed has a r
 
 - No elbows or knees yet. Close-range elbows barely move the wrist keypoint.
 - Clinch work is unreliable. Keypoints get stolen between bodies, and a punch in the clinch looks like a shove.
-- Ground strikes are counted but the pose model does poorly on a horizontal body. Don't trust those numbers.
 - Blocked punches read as either landed or missed depending on where the guard catches them. Needs a third outcome.
 - The minimap is image-space, not a true top-down view. Needs a homography from the cage floor lines.
 - No benchmark against official stats yet. That's the next thing.
