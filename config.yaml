@@ -71,7 +71,8 @@ overlay:
   stat_panel: true
   minimap: true
   flash_frames: 12
-  panel_alpha: 0.82               # stat panel opacity — raise if a broadcast watermark shows through
+  kinematics: false               # draw joint angles + limb speeds on the skeleton (or pass --kinematics)
+  panel_alpha: 0.82               # stat panel opacity - raise if a broadcast watermark shows through
   panel_pos: top-left             # top-left | top-right
 
 commentary:

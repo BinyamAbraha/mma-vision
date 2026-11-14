@@ -122,8 +122,30 @@ def draw_minimap(img, cfg: Config, trails: dict[str, deque], frame_w: int, frame
             cv2.circle(img, (mx, my), rad, col, -1, cv2.LINE_AA)
 
 
+def draw_kinematics(img, s: FighterSeries, fi: int, color, krow):
+    """Joint angles at elbows/knees and the speed of whichever hand/foot is moving fastest."""
+    kp = s.kp[fi]
+    for joint, col in (("l_elbow", "elbow_l"), ("r_elbow", "elbow_r"), ("l_knee", "knee_l"), ("r_knee", "knee_r")):
+        p = kp[KP[joint]]
+        a = krow.get(col, np.nan)
+        if _ok(p) and not np.isnan(a):
+            # small arc at the joint + degree readout
+            cv2.circle(img, tuple(p.astype(int)), 9, color, 1, cv2.LINE_AA)
+            _text(img, f"{a:.0f}", (int(p[0]) + 11, int(p[1]) + 4), 0.42, WHITE, 1)
+    tips = {"l_wrist": "wrist_l_speed", "r_wrist": "wrist_r_speed", "l_ankle": "ankle_l_speed", "r_ankle": "ankle_r_speed"}
+    best, bv = None, 0.0
+    for tip, col in tips.items():
+        v = krow.get(col, np.nan)
+        if not np.isnan(v) and v > bv:
+            best, bv = tip, v
+    if best is not None and bv > 3.0 and _ok(kp[KP[best]]):  # only when something is actually moving
+        p = kp[KP[best]].astype(int)
+        _text(img, f"{bv:.1f} t/s", (p[0] + 12, p[1] - 10), 0.45, color, 1)
+
+
 def render(video: str | Path, series: dict[str, FighterSeries], events: pd.DataFrame, fs: pd.DataFrame,
-           cfg: Config, out_path: str | Path, max_frames: int | None = None, progress: bool = True) -> Path:
+           cfg: Config, out_path: str | Path, max_frames: int | None = None, progress: bool = True,
+           kinematics: pd.DataFrame | None = None) -> Path:
     cap = cv2.VideoCapture(str(video))
     if not cap.isOpened():
         raise FileNotFoundError(video)
@@ -142,6 +164,9 @@ def render(video: str | Path, series: dict[str, FighterSeries], events: pd.DataF
         ev_by_frame.setdefault(int(e["frame"]), []).append(e)
     active: list[tuple[int, pd.Series]] = []  # (start_frame, event)
     trails = {f: deque(maxlen=int(fps * 3)) for f in FIGHTERS}
+    kin_idx = None
+    if kinematics is not None and len(kinematics):
+        kin_idx = {f: g.set_index("frame") for f, g in kinematics.groupby("fighter")}
 
     bar = None
     if progress:
@@ -166,6 +191,8 @@ def render(video: str | Path, series: dict[str, FighterSeries], events: pd.DataF
                 draw_skeleton(frame, s, fi, col)
             if cfg.overlay.draw_boxes:
                 draw_box(frame, s, fi, col, names[f])
+            if kin_idx is not None and f in kin_idx and fi in kin_idx[f].index:
+                draw_kinematics(frame, s, fi, col, kin_idx[f].loc[fi])
 
         # strike flashes
         for e in ev_by_frame.get(fi, []):

@@ -10,6 +10,7 @@ Outputs land in outputs/<clip-name>/:
   tracks.parquet   raw per-frame keypoints (cached - inference never re-runs)
   events.csv       strike events
   frames.csv       per-frame metrics (distance, guard, position)
+  kinematics.csv   per-frame joint angles, limb speeds/accelerations, trunk lean (image-plane 2D)
   summary.json     fight summary
   summary.png      shareable stat card
   annotated.mp4    the overlay video
@@ -46,6 +47,7 @@ def analyze(tracks, cfg: Config, fps: float, w: int, h: int, out: Path):
     from .metrics import frame_series, summarize
     from .charts import summary_card
     from .identity import fix_identity
+    from . import kinematics as kin
 
     if cfg.fighters.repair_identity:
         tracks, n_fixed = fix_identity(tracks, switch_penalty=cfg.fighters.repair_switch_penalty,
@@ -59,7 +61,13 @@ def analyze(tracks, cfg: Config, fps: float, w: int, h: int, out: Path):
     names = {"red": cfg.red_name, "blue": cfg.blue_name}
     summary = summarize(events, fs, fps, cfg.round_length_sec, names)
 
+    kinem = kin.compute(series, fps)
+    events = kin.at_events(kinem, events)
+    for f, v in kin.summarize(kinem).items():
+        summary["fighters"][f]["kinematics"] = v
+
     out.mkdir(parents=True, exist_ok=True)
+    kinem.round(3).to_csv(out / "kinematics.csv", index=False)
     events.to_csv(out / "events.csv", index=False)
     cands = getattr(detect_strikes, "last_candidates", None)
     if cands is not None and len(cands):
@@ -98,7 +106,8 @@ def cmd_run(a):
 
     if not a.no_render:
         t0 = time.time()
-        vid = render(video, series, events, fs, cfg, out / "annotated.mp4", max_frames=a.max_frames)
+        vid = render(video, series, events, fs, cfg, out / "annotated.mp4", max_frames=a.max_frames,
+                     kinematics=_kin_for_overlay(cfg, out))
         log.info("rendered %s in %.1fs", vid, time.time() - t0)
         if cfg.commentary.enabled:
             lines = cm.generate(events, summary, cfg.commentary, out / "commentary.json")
@@ -119,7 +128,8 @@ def cmd_rerender(a):
     fps, w, h = _video_meta(video, cfg)
     tracks = read_tracks(out / "tracks.parquet")
     series, events, fs, _ = analyze(tracks, cfg, fps, w, h, out)
-    render(video, series, events, fs, cfg, out / "annotated.mp4", max_frames=a.max_frames)
+    render(video, series, events, fs, cfg, out / "annotated.mp4", max_frames=a.max_frames,
+           kinematics=_kin_for_overlay(cfg, out))
     print(f"\nRe-rendered -> {out / 'annotated.mp4'}")
 
 
@@ -132,6 +142,14 @@ def cmd_analyze(a):
     out = Path(a.out) if a.out else Path(a.tracks).parent
     analyze(tracks, cfg, fps, w, h, out)
     print(f"\nAnalysis written to {out}/")
+
+
+def _kin_for_overlay(cfg: Config, out: Path):
+    if not cfg.overlay.kinematics:
+        return None
+    import pandas as pd
+    p = out / "kinematics.csv"
+    return pd.read_csv(p) if p.exists() else None
 
 
 def _cfg_from_args(a) -> Config:
@@ -148,6 +166,8 @@ def _cfg_from_args(a) -> Config:
         cfg.commentary.enabled = True
     if getattr(a, "tts", None):
         cfg.commentary.tts = a.tts
+    if getattr(a, "kinematics", False):
+        cfg.overlay.kinematics = True
     return cfg
 
 
@@ -162,6 +182,7 @@ def main(argv=None):
         sp.add_argument("--red", help="red corner fighter name")
         sp.add_argument("--blue", help="blue corner fighter name")
         sp.add_argument("--max-frames", type=int, help="process only the first N frames (quick test)")
+        sp.add_argument("--kinematics", action="store_true", help="overlay joint angles and limb speeds")
 
     r = sub.add_parser("run", help="full pipeline: track -> analyze -> render")
     r.add_argument("video"); common(r)

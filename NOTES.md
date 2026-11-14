@@ -48,3 +48,11 @@ still to do before I trust the numbers: run a full round and compare to ufcstats
   flagged Izzy at 0.90 in a backlit frame (median V=31, dark skin in shadow is just dark). hue works:
   brown is dark red, black fabric under arena lights is blue-grey. ref 0.91-0.99, Izzy 0.10-0.15,
   Pereira 0.32 because of the chest tattoos. threshold 0.7.
+
+## 2026-11-14
+
+- someone asked on LinkedIn whether it tracks joint kinematics. it tracked limb speeds internally and
+  nothing else, so: kinematics.csv with elbow/knee/hip angles, angular velocities, tip speeds and
+  accelerations, hip speed, trunk lean. events get peak tip speed + joint angle at impact. --kinematics
+  draws it on the skeleton. synthetic sanity: elbows 40-60 in guard, ~157 at punch impact, knees ~170
+  standing, ~140 mid kick. all 2D, said so in the README twice.

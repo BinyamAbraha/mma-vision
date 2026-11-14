@@ -87,6 +87,7 @@ class OverlayCfg:
     stat_panel: bool = True
     minimap: bool = True
     flash_frames: int = 12
+    kinematics: bool = False          # draw elbow/knee angles and wrist/ankle speeds on the skeleton
     panel_alpha: float = 0.82         # stat panel background opacity (broadcast watermarks sit under it)
     panel_pos: str = "top-left"       # top-left | top-right
     font_scale: float = 0.55

@@ -52,6 +52,7 @@ Outputs land in `outputs/<clip>/`:
 | `events.csv` | every strike with the features it was judged on |
 | `candidates.csv` | every candidate motion, accepted or not, with `rejected_by`. Look here first when a strike is missed |
 | `frames.csv` | per-frame distance, range, guard height, position |
+| `kinematics.csv` | per-frame joint angles (elbow, knee, hip), angular velocities, wrist/ankle speed and acceleration, hip speed, trunk lean |
 | `tracks.parquet` | raw keypoints. Cached, so inference never re-runs unless the model or frame count changes |
 
 Inference is the only slow step and it's cached. Change anything in `config.yaml` and
@@ -75,6 +76,17 @@ No training data. For each fighter's wrists and ankles, every frame:
 All thresholds are in `config.yaml` with comments on what each one is for. The synthetic fight
 (`scripts/make_synthetic.py`) has 16 scripted strikes, a walk-in, a 1-2-3 and a whiffed jab; the detector gets
 16/16 with the right fighter, limb and landed call on 15. That's a sanity check, not a benchmark - see below.
+
+## Kinematics
+
+`kinematics.csv` has, per frame and per fighter: elbow / knee / hip angles (180 = straight), their angular
+velocities, wrist and ankle speed and acceleration, hip speed, and trunk lean toward the opponent. Each
+strike in `events.csv` also carries the peak tip speed and the striking joint's angle at impact, and
+`summary.json` gets per-fighter peaks. `--kinematics` draws the angles and the fastest limb's speed on the overlay.
+
+It's image-plane 2D from one broadcast camera. Angles are projected angles and speeds are in torso-heights
+per second, not metres. A limb pointing at the lens foreshortens, so an elbow aimed at the camera reads as
+bent regardless. Useful as a consistent relative signal across a fight; not a measurement.
 
 ## Who is who
 
